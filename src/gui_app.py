@@ -89,8 +89,9 @@ class HanjinAutomationApp:
             messagebox.showerror("오류", f"설정 저장 실패: {e}")
     
     def check_license(self):
-        """라이선스 확인"""
-        valid, message = self.license_manager.verify_license()
+        """라이선스 확인 (프로그램 시작 시 강제 온라인 검증)"""
+        # 프로그램 시작 시 항상 온라인 검증 수행
+        valid, message = self.license_manager.verify_license(force_online=True)
         if not valid:
             # 라이선스 입력 창 표시
             license_window = tk.Toplevel(self.root)
@@ -459,6 +460,11 @@ class HanjinAutomationApp:
     
     def start_automation(self):
         """동기화 실행 (자동화 시작)"""
+        # 자동화 시작 전 라이선스 검증 (강제 온라인 검증)
+        valid, message = self.license_manager.verify_license(force_online=True)
+        if not valid:
+            messagebox.showerror("라이선스 오류", f"라이선스 검증 실패:\n{message}\n\n프로그램을 사용할 수 없습니다.")
+            return
         if self.is_running:
             return
         
