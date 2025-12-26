@@ -397,6 +397,10 @@
                 if (result.success) {
                     showAlert(`라이선스 생성 완료!<br>라이선스 키: <strong>${result.license_key}</strong><br>만료일: ${result.expiry_date.split('T')[0]}`, 'success');
                     document.getElementById('create-form').reset();
+                    // 라이선스 목록 탭이 열려있으면 새로고침
+                    if (document.getElementById('list').classList.contains('active')) {
+                        loadLicenseList();
+                    }
                 } else {
                     showAlert(result.message, 'error');
                 }
@@ -476,14 +480,75 @@
         
         // 대시보드 로드
         async function loadDashboard() {
-            // 통계는 서버에서 제공하는 API가 필요하므로 간단히 표시
-            showAlert('대시보드 데이터를 불러오는 중...', 'info');
+            try {
+                const response = await fetch(`${API_URL}/api/stats`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({admin_key: ADMIN_KEY})
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('total-licenses').textContent = result.total_licenses;
+                    document.getElementById('active-licenses').textContent = result.active_licenses;
+                    document.getElementById('expired-licenses').textContent = result.expired_licenses;
+                    document.getElementById('total-revenue').textContent = result.total_revenue.toLocaleString('ko-KR');
+                }
+            } catch (error) {
+                console.error('대시보드 로드 실패:', error);
+            }
         }
         
         // 라이선스 목록 로드
         async function loadLicenseList() {
-            // 서버에서 목록 API가 필요함
-            showAlert('라이선스 목록을 불러오는 중...', 'info');
+            try {
+                const response = await fetch(`${API_URL}/api/list_licenses`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({admin_key: ADMIN_KEY})
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    const container = document.getElementById('license-list-container');
+                    
+                    if (result.licenses.length === 0) {
+                        container.innerHTML = '<p>등록된 라이선스가 없습니다.</p>';
+                        return;
+                    }
+                    
+                    let html = '<table><thead><tr><th>라이선스 키</th><th>고객명</th><th>이메일</th><th>만료일</th><th>상태</th><th>구독 유형</th><th>마지막 검증</th></tr></thead><tbody>';
+                    
+                    result.licenses.forEach(license => {
+                        const expiryDate = new Date(license.expiry_date);
+                        const isExpired = expiryDate < new Date();
+                        const statusBadge = isExpired ? 
+                            '<span class="badge badge-expired">만료</span>' : 
+                            '<span class="badge badge-active">활성</span>';
+                        
+                        html += `
+                            <tr>
+                                <td><strong>${license.license_key}</strong></td>
+                                <td>${license.customer_name || '-'}</td>
+                                <td>${license.customer_email || '-'}</td>
+                                <td>${expiryDate.toLocaleDateString('ko-KR')}</td>
+                                <td>${statusBadge}</td>
+                                <td>${license.subscription_type || '-'}</td>
+                                <td>${license.last_verified ? new Date(license.last_verified).toLocaleString('ko-KR') : '-'}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    html += '</tbody></table>';
+                    container.innerHTML = html;
+                } else {
+                    showAlert(result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('라이선스 목록을 불러올 수 없습니다: ' + error.message, 'error');
+            }
         }
     </script>
 </body>
