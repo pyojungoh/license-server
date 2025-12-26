@@ -227,6 +227,8 @@
         
         <!-- 대시보드 -->
         <div id="dashboard" class="tab-content active">
+            <h2>대시보드</h2>
+            <button onclick="loadDashboard()" class="secondary" style="margin-bottom: 20px;">새로고침</button>
             <div class="stats" id="stats">
                 <div class="stat-card">
                     <h3 id="total-licenses">-</h3>
@@ -480,6 +482,12 @@
         
         // 대시보드 로드
         async function loadDashboard() {
+            // 로딩 표시
+            document.getElementById('total-licenses').textContent = '...';
+            document.getElementById('active-licenses').textContent = '...';
+            document.getElementById('expired-licenses').textContent = '...';
+            document.getElementById('total-revenue').textContent = '...';
+            
             try {
                 const response = await fetch(`${API_URL}/api/stats`, {
                     method: 'POST',
@@ -490,15 +498,33 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    document.getElementById('total-licenses').textContent = result.total_licenses;
-                    document.getElementById('active-licenses').textContent = result.active_licenses;
-                    document.getElementById('expired-licenses').textContent = result.expired_licenses;
-                    document.getElementById('total-revenue').textContent = result.total_revenue.toLocaleString('ko-KR');
+                    document.getElementById('total-licenses').textContent = result.total_licenses || 0;
+                    document.getElementById('active-licenses').textContent = result.active_licenses || 0;
+                    document.getElementById('expired-licenses').textContent = result.expired_licenses || 0;
+                    document.getElementById('total-revenue').textContent = (result.total_revenue || 0).toLocaleString('ko-KR');
+                } else {
+                    showAlert(result.message || '통계를 불러올 수 없습니다.', 'error');
+                    // 에러 시 기본값 표시
+                    document.getElementById('total-licenses').textContent = '-';
+                    document.getElementById('active-licenses').textContent = '-';
+                    document.getElementById('expired-licenses').textContent = '-';
+                    document.getElementById('total-revenue').textContent = '-';
                 }
             } catch (error) {
                 console.error('대시보드 로드 실패:', error);
+                showAlert('대시보드 로드 중 오류가 발생했습니다: ' + error.message, 'error');
+                // 에러 시 기본값 표시
+                document.getElementById('total-licenses').textContent = '-';
+                document.getElementById('active-licenses').textContent = '-';
+                document.getElementById('expired-licenses').textContent = '-';
+                document.getElementById('total-revenue').textContent = '-';
             }
         }
+        
+        // 페이지 로드 시 대시보드 자동 로드
+        window.addEventListener('DOMContentLoaded', function() {
+            loadDashboard();
+        });
         
         // 라이선스 목록 로드
         async function loadLicenseList() {
