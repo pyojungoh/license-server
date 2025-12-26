@@ -558,7 +558,12 @@ def index():
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """데이터베이스 연결 상태 확인"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
+        logger.info(f"Health check: USE_POSTGRESQL={USE_POSTGRESQL}, DATABASE_URL 존재={bool(DATABASE_URL)}")
+        
         conn = get_db_connection()
         cursor = conn.cursor()
         
@@ -568,10 +573,14 @@ def health_check():
             db_version = cursor.fetchone()[0]
             db_type = "PostgreSQL"
             
-            # 테이블 존재 확인
+            # 현재 데이터베이스 이름 확인
+            cursor.execute("SELECT current_database();")
+            db_name = cursor.fetchone()[0]
+            
+            # 테이블 존재 확인 (public 스키마만)
             cursor.execute("""
                 SELECT COUNT(*) FROM information_schema.tables 
-                WHERE table_name = 'licenses'
+                WHERE table_schema = 'public' AND table_name = 'licenses'
             """)
             table_exists = cursor.fetchone()[0] > 0
             
@@ -585,6 +594,7 @@ def health_check():
             cursor.execute("SELECT sqlite_version();")
             db_version = cursor.fetchone()[0]
             db_type = "SQLite"
+            db_name = str(DB_PATH) if DB_PATH else "N/A"
             
             # 테이블 존재 확인
             cursor.execute("""
@@ -602,17 +612,21 @@ def health_check():
         
         conn.close()
         
-        return jsonify({
+        result = {
             'success': True,
             'database_type': db_type,
+            'database_name': db_name,
             'database_version': db_version,
             'connected': True,
             'table_exists': table_exists,
             'license_count': license_count,
             'database_url_set': USE_POSTGRESQL,
             'database_url_present': bool(DATABASE_URL),
-            'database_url_preview': DATABASE_URL[:50] + '...' if DATABASE_URL and len(DATABASE_URL) > 50 else DATABASE_URL
-        })
+            'database_url_preview': DATABASE_URL[:50] + '...' if DATABASE_URL and len(DATABASE_URL) > 50 else (DATABASE_URL or 'None')
+        }
+        
+        logger.info(f"Health check 결과: {result}")
+        return jsonify(result)
     except Exception as e:
         import traceback
         return jsonify({
