@@ -387,41 +387,58 @@ def create_license():
     license_key = generate_license_key()
     expiry_date = datetime.datetime.now() + datetime.timedelta(days=period_days)
     
+    import logging
+    logger = logging.getLogger(__name__)
+    
     conn = None
+    cursor = None
     try:
+        logger.info(f"라이선스 생성 시작: customer_name={customer_name}, period_days={period_days}")
+        logger.info(f"데이터베이스 모드: {'PostgreSQL' if USE_POSTGRESQL else 'SQLite'}")
+        
         conn = get_db_connection()
         # PostgreSQL은 autocommit이 꺼져있으므로 명시적으로 설정
         if USE_POSTGRESQL:
             conn.autocommit = False
+            logger.info("PostgreSQL 연결 성공, autocommit=False 설정")
         
         cursor = conn.cursor()
         
         now = datetime.datetime.now()
+        logger.info(f"라이선스 키 생성: {license_key}, 만료일: {expiry_date}")
+        
         if USE_POSTGRESQL:
+            logger.info("PostgreSQL INSERT 실행 중...")
             cursor.execute("""
                 INSERT INTO licenses (license_key, customer_name, customer_email, 
                                    created_date, expiry_date, subscription_type)
                 VALUES (%s, %s, %s, %s, %s, %s)
             """, (license_key, customer_name, customer_email, now, expiry_date, subscription_type))
+            logger.info("PostgreSQL INSERT 완료")
         else:
+            logger.info("SQLite INSERT 실행 중...")
             cursor.execute("""
                 INSERT INTO licenses (license_key, customer_name, customer_email, 
                                    created_date, expiry_date, subscription_type)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (license_key, customer_name, customer_email, 
                   now.isoformat(), expiry_date.isoformat(), subscription_type))
+            logger.info("SQLite INSERT 완료")
         
-        # 커밋 확인
+        # 커밋 실행
+        logger.info("커밋 실행 중...")
         conn.commit()
+        logger.info("커밋 완료")
         
         # 커밋 후 데이터 확인 (디버깅)
         cursor.execute("SELECT COUNT(*) FROM licenses WHERE license_key = %s" if USE_POSTGRESQL else "SELECT COUNT(*) FROM licenses WHERE license_key = ?", 
                       (license_key,))
         count = cursor.fetchone()[0]
-        
-        import logging
-        logger = logging.getLogger(__name__)
         logger.info(f"라이선스 생성 완료: {license_key}, DB에 저장 확인: {count}개")
+        
+        if count == 0:
+            logger.error(f"경고: 라이선스가 저장되지 않았습니다! {license_key}")
+            return jsonify({'success': False, 'message': '라이선스가 저장되지 않았습니다.'}), 500
         
         return jsonify({
             'success': True,
@@ -431,14 +448,16 @@ def create_license():
     except Exception as e:
         if conn:
             conn.rollback()
-        import logging
+            logger.error("롤백 실행됨")
         import traceback
-        logger = logging.getLogger(__name__)
         logger.error(f"라이선스 생성 실패: {e}\n{traceback.format_exc()}")
         return jsonify({'success': False, 'message': f'라이선스 생성 실패: {str(e)}'}), 500
     finally:
+        if cursor:
+            cursor.close()
         if conn:
             conn.close()
+            logger.info("데이터베이스 연결 종료")
 
 @app.route('/api/extend_license', methods=['POST'])
 def extend_license():
