@@ -770,35 +770,101 @@ def list_licenses():
             
             usage_data = cursor.fetchone()
             
+            # 사용 통계 데이터 안전하게 추출
             if USE_POSTGRESQL:
+                if usage_data:
+                    run_count = usage_data.get('run_count') or 0
+                    total_invoices = usage_data.get('total_invoices') or 0
+                    last_usage = usage_data.get('last_usage')
+                else:
+                    run_count = 0
+                    total_invoices = 0
+                    last_usage = None
+            else:
+                if usage_data:
+                    run_count = usage_data[0] or 0
+                    total_invoices = usage_data[1] or 0
+                    last_usage = usage_data[2]
+                else:
+                    run_count = 0
+                    total_invoices = 0
+                    last_usage = None
+            
+            # 날짜 형식 변환
+            if last_usage:
+                if isinstance(last_usage, str):
+                    last_usage_str = last_usage
+                elif hasattr(last_usage, 'isoformat'):
+                    last_usage_str = last_usage.isoformat()
+                else:
+                    last_usage_str = str(last_usage)
+            else:
+                last_usage_str = None
+            
+            if USE_POSTGRESQL:
+                # expiry_date 처리
+                expiry_date_val = row.get('expiry_date')
+                if isinstance(expiry_date_val, str):
+                    expiry_date_obj = datetime.datetime.fromisoformat(expiry_date_val.replace('Z', '+00:00'))
+                elif hasattr(expiry_date_val, 'isoformat'):
+                    expiry_date_obj = expiry_date_val
+                else:
+                    expiry_date_obj = expiry_date_val
+                
+                expiry_date_str = expiry_date_obj.isoformat() if hasattr(expiry_date_obj, 'isoformat') else str(expiry_date_obj)
+                
+                # last_verified 처리
+                last_verified_val = row.get('last_verified')
+                if last_verified_val:
+                    if isinstance(last_verified_val, str):
+                        last_verified_str = last_verified_val
+                    elif hasattr(last_verified_val, 'isoformat'):
+                        last_verified_str = last_verified_val.isoformat()
+                    else:
+                        last_verified_str = str(last_verified_val)
+                else:
+                    last_verified_str = ''
+                
+                # created_date 처리
+                created_date_val = row.get('created_date')
+                if created_date_val:
+                    if isinstance(created_date_val, str):
+                        created_date_str = created_date_val
+                    elif hasattr(created_date_val, 'isoformat'):
+                        created_date_str = created_date_val.isoformat()
+                    else:
+                        created_date_str = str(created_date_val)
+                else:
+                    created_date_str = ''
+                
                 licenses.append({
-                    'license_key': row.get('license_key'),
+                    'license_key': row.get('license_key', ''),
                     'customer_name': row.get('customer_name') or '',
                     'customer_email': row.get('customer_email') or '',
-                    'expiry_date': row.get('expiry_date').isoformat() if hasattr(row.get('expiry_date'), 'isoformat') else str(row.get('expiry_date')),
-                    'subscription_type': row.get('subscription_type'),
+                    'expiry_date': expiry_date_str,
+                    'subscription_type': row.get('subscription_type') or '',
                     'is_active': bool(row.get('is_active')),
                     'is_expired': is_expired,
-                    'last_verified': row.get('last_verified').isoformat() if row.get('last_verified') and hasattr(row.get('last_verified'), 'isoformat') else (row.get('last_verified') or ''),
-                    'created_date': row.get('created_date').isoformat() if hasattr(row.get('created_date'), 'isoformat') else str(row.get('created_date')),
-                    'run_count': usage_data[0] or 0 if usage_data else 0,
-                    'total_invoices': usage_data[1] or 0 if usage_data else 0,
-                    'last_usage': usage_data[2].isoformat() if usage_data and usage_data[2] and hasattr(usage_data[2], 'isoformat') else (usage_data[2] if usage_data else None)
+                    'last_verified': last_verified_str,
+                    'created_date': created_date_str,
+                    'run_count': run_count,
+                    'total_invoices': total_invoices,
+                    'last_usage': last_usage_str
                 })
             else:
                 licenses.append({
-                    'license_key': row[0],
+                    'license_key': row[0] or '',
                     'customer_name': row[1] or '',
                     'customer_email': row[2] or '',
-                    'expiry_date': row[3],
-                    'subscription_type': row[4],
+                    'expiry_date': row[3] or '',
+                    'subscription_type': row[4] or '',
                     'is_active': bool(row[5]),
                     'is_expired': is_expired,
-                    'last_verified': row[6],
-                    'created_date': row[7],
-                    'run_count': usage_data[0] or 0,
-                    'total_invoices': usage_data[1] or 0,
-                    'last_usage': usage_data[2]
+                    'last_verified': row[6] or '',
+                    'created_date': row[7] or '',
+                    'run_count': run_count,
+                    'total_invoices': total_invoices,
+                    'last_usage': last_usage_str
                 })
         
         return jsonify({
