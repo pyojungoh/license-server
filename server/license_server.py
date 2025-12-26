@@ -99,93 +99,93 @@ def init_db():
         
         # 테이블 생성
         if USE_POSTGRESQL:
-        # PostgreSQL 테이블 생성
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS licenses (
-                id SERIAL PRIMARY KEY,
-                license_key VARCHAR(255) UNIQUE NOT NULL,
-                customer_name VARCHAR(255),
-                customer_email VARCHAR(255),
-                hardware_id VARCHAR(255),
-                created_date TIMESTAMP NOT NULL,
-                expiry_date TIMESTAMP NOT NULL,
-                is_active BOOLEAN DEFAULT TRUE,
-                subscription_type VARCHAR(50) DEFAULT 'monthly',
-                last_verified TIMESTAMP
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS subscriptions (
-                id SERIAL PRIMARY KEY,
-                license_key VARCHAR(255) NOT NULL,
-                payment_date TIMESTAMP NOT NULL,
-                amount DECIMAL(10, 2) NOT NULL,
-                period_days INTEGER NOT NULL,
-                FOREIGN KEY (license_key) REFERENCES licenses(license_key)
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS usage_stats (
-                id SERIAL PRIMARY KEY,
-                license_key VARCHAR(255) NOT NULL,
-                usage_date TIMESTAMP NOT NULL,
-                total_invoices INTEGER NOT NULL DEFAULT 0,
-                success_count INTEGER NOT NULL DEFAULT 0,
-                fail_count INTEGER NOT NULL DEFAULT 0,
-                FOREIGN KEY (license_key) REFERENCES licenses(license_key)
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_usage_stats_license_date 
-            ON usage_stats(license_key, usage_date)
-        """)
-    else:
-        # SQLite 테이블 생성
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS licenses (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                license_key TEXT UNIQUE NOT NULL,
-                customer_name TEXT,
-                customer_email TEXT,
-                hardware_id TEXT,
-                created_date TEXT NOT NULL,
-                expiry_date TEXT NOT NULL,
-                is_active INTEGER DEFAULT 1,
-                subscription_type TEXT DEFAULT 'monthly',
-                last_verified TEXT
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS subscriptions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                license_key TEXT NOT NULL,
-                payment_date TEXT NOT NULL,
-                amount REAL NOT NULL,
-                period_days INTEGER NOT NULL,
-                FOREIGN KEY (license_key) REFERENCES licenses(license_key)
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS usage_stats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                license_key TEXT NOT NULL,
-                usage_date TEXT NOT NULL,
-                total_invoices INTEGER NOT NULL DEFAULT 0,
-                success_count INTEGER NOT NULL DEFAULT 0,
-                fail_count INTEGER NOT NULL DEFAULT 0,
-                FOREIGN KEY (license_key) REFERENCES licenses(license_key)
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_usage_stats_license_date 
-            ON usage_stats(license_key, usage_date)
-        """)
+            # PostgreSQL 테이블 생성
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS licenses (
+                    id SERIAL PRIMARY KEY,
+                    license_key VARCHAR(255) UNIQUE NOT NULL,
+                    customer_name VARCHAR(255),
+                    customer_email VARCHAR(255),
+                    hardware_id VARCHAR(255),
+                    created_date TIMESTAMP NOT NULL,
+                    expiry_date TIMESTAMP NOT NULL,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    subscription_type VARCHAR(50) DEFAULT 'monthly',
+                    last_verified TIMESTAMP
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS subscriptions (
+                    id SERIAL PRIMARY KEY,
+                    license_key VARCHAR(255) NOT NULL,
+                    payment_date TIMESTAMP NOT NULL,
+                    amount DECIMAL(10, 2) NOT NULL,
+                    period_days INTEGER NOT NULL,
+                    FOREIGN KEY (license_key) REFERENCES licenses(license_key)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS usage_stats (
+                    id SERIAL PRIMARY KEY,
+                    license_key VARCHAR(255) NOT NULL,
+                    usage_date TIMESTAMP NOT NULL,
+                    total_invoices INTEGER NOT NULL DEFAULT 0,
+                    success_count INTEGER NOT NULL DEFAULT 0,
+                    fail_count INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (license_key) REFERENCES licenses(license_key)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_usage_stats_license_date 
+                ON usage_stats(license_key, usage_date)
+            """)
+        else:
+            # SQLite 테이블 생성
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS licenses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    license_key TEXT UNIQUE NOT NULL,
+                    customer_name TEXT,
+                    customer_email TEXT,
+                    hardware_id TEXT,
+                    created_date TEXT NOT NULL,
+                    expiry_date TEXT NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    subscription_type TEXT DEFAULT 'monthly',
+                    last_verified TEXT
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS subscriptions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    license_key TEXT NOT NULL,
+                    payment_date TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    period_days INTEGER NOT NULL,
+                    FOREIGN KEY (license_key) REFERENCES licenses(license_key)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS usage_stats (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    license_key TEXT NOT NULL,
+                    usage_date TEXT NOT NULL,
+                    total_invoices INTEGER NOT NULL DEFAULT 0,
+                    success_count INTEGER NOT NULL DEFAULT 0,
+                    fail_count INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (license_key) REFERENCES licenses(license_key)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_usage_stats_license_date 
+                ON usage_stats(license_key, usage_date)
+            """)
         
         conn.commit()
         logger.info("✓ 데이터베이스 테이블 생성 완료")
