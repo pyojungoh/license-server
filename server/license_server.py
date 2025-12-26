@@ -6,12 +6,15 @@
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import hashlib
 import secrets
 import datetime
 from pathlib import Path
 import json
 import os
+import urllib.parse
 
 # 템플릿 폴더 경로 (현재 파일 기준)
 template_dir = Path(__file__).parent / 'templates'
@@ -21,17 +24,22 @@ CORS(app)  # CORS 허용 (클라이언트에서 접근 가능하도록)
 # 관리자 키 (환경변수 또는 기본값)
 ADMIN_KEY = os.environ.get('ADMIN_KEY', '2133781qQ!!@#')
 
-# 데이터베이스 초기화
-# Railway Volume을 사용하거나 환경변수로 경로 지정
-# Volume이 마운트되면 /app/data, 없으면 /app 사용
-volume_path = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH', '/app/data')
-DB_DIR = Path(volume_path)
-DB_DIR.mkdir(parents=True, exist_ok=True)  # 디렉토리 생성
-DB_PATH = DB_DIR / "licenses.db"
+# 데이터베이스 연결 설정
+# Railway PostgreSQL 사용 (DATABASE_URL 환경변수)
+# 없으면 로컬 SQLite 사용
+DATABASE_URL = os.environ.get('DATABASE_URL')
+USE_POSTGRESQL = DATABASE_URL is not None
+
+if not USE_POSTGRESQL:
+    # 로컬 개발용 SQLite
+    volume_path = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH', '/app/data')
+    DB_DIR = Path(volume_path)
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    DB_PATH = DB_DIR / "licenses.db"
 
 def init_db():
     """데이터베이스 초기화"""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     # 라이선스 테이블
@@ -100,14 +108,23 @@ def activate_license():
     if not license_key or not hardware_id:
         return jsonify({'success': False, 'message': '라이선스 키와 하드웨어 ID가 필요합니다.'}), 400
     
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
     
     # 라이선스 확인
-    cursor.execute("""
-        SELECT * FROM licenses 
-        WHERE license_key = ? AND is_active = 1
-    """, (license_key,))
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT * FROM licenses 
+            WHERE license_key = %s AND is_active = TRUE
+        """, (license_key,))
+    else:
+        cursor.execute("""
+            SELECT * FROM licenses 
+            WHERE license_key = ? AND is_active = 1
+        """, (license_key,))
     
     license_data = cursor.fetchone()
     
@@ -115,8 +132,13 @@ def activate_license():
         conn.close()
         return jsonify({'success': False, 'message': '유효하지 않은 라이선스 키입니다.'}), 400
     
-    # 하드웨어 ID 확인
-    stored_hw_id = license_data[5]  # hardware_id 컬럼
+    # 하드웨어 ID 확인 (PostgreSQL은 dict, SQLite는 tuple)
+    if USE_POSTGRESQL:
+        stored_hw_id = license_data.get('hardware_id')
+        expiry_date_str = license_data.get('expiry_date')
+    else:
+        stored_hw_id = license_data[5]  # hardware_id 컬럼
+        expiry_date_str = license_data[6]  # expiry_date 컬럼
     
     if stored_hw_id and stored_hw_id != hardware_id:
         conn.close()
@@ -127,15 +149,26 @@ def activate_license():
     
     # 하드웨어 ID가 없으면 등록
     if not stored_hw_id:
-        cursor.execute("""
-            UPDATE licenses 
-            SET hardware_id = ?, customer_name = ?, customer_email = ?
-            WHERE license_key = ?
-        """, (hardware_id, customer_name, customer_email, license_key))
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                UPDATE licenses 
+                SET hardware_id = %s, customer_name = %s, customer_email = %s
+                WHERE license_key = %s
+            """, (hardware_id, customer_name, customer_email, license_key))
+        else:
+            cursor.execute("""
+                UPDATE licenses 
+                SET hardware_id = ?, customer_name = ?, customer_email = ?
+                WHERE license_key = ?
+            """, (hardware_id, customer_name, customer_email, license_key))
         conn.commit()
     
     # 만료일 확인
-    expiry_date = datetime.datetime.fromisoformat(license_data[6])
+    if isinstance(expiry_date_str, str):
+        expiry_date = datetime.datetime.fromisoformat(expiry_date_str)
+    else:
+        expiry_date = expiry_date_str  # 이미 datetime 객체
+    
     if datetime.datetime.now() > expiry_date:
         conn.close()
         return jsonify({
@@ -144,11 +177,19 @@ def activate_license():
         }), 400
     
     # 검증 시간 업데이트
-    cursor.execute("""
-        UPDATE licenses 
-        SET last_verified = ?
-        WHERE license_key = ?
-    """, (datetime.datetime.now().isoformat(), license_key))
+    now = datetime.datetime.now()
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            UPDATE licenses 
+            SET last_verified = %s
+            WHERE license_key = %s
+        """, (now, license_key))
+    else:
+        cursor.execute("""
+            UPDATE licenses 
+            SET last_verified = ?
+            WHERE license_key = ?
+        """, (now.isoformat(), license_key))
     conn.commit()
     conn.close()
     
@@ -168,13 +209,22 @@ def verify_license():
     if not license_key or not hardware_id:
         return jsonify({'success': False, 'message': '라이선스 키와 하드웨어 ID가 필요합니다.'}), 400
     
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
     
-    cursor.execute("""
-        SELECT * FROM licenses 
-        WHERE license_key = ? AND hardware_id = ? AND is_active = 1
-    """, (license_key, hardware_id))
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT * FROM licenses 
+            WHERE license_key = %s AND hardware_id = %s AND is_active = TRUE
+        """, (license_key, hardware_id))
+    else:
+        cursor.execute("""
+            SELECT * FROM licenses 
+            WHERE license_key = ? AND hardware_id = ? AND is_active = 1
+        """, (license_key, hardware_id))
     
     license_data = cursor.fetchone()
     
@@ -182,15 +232,29 @@ def verify_license():
         conn.close()
         return jsonify({'success': False, 'message': '유효하지 않은 라이선스입니다.'}), 400
     
-    expiry_date = datetime.datetime.fromisoformat(license_data[6])
+    if USE_POSTGRESQL:
+        expiry_date = license_data.get('expiry_date')
+        if isinstance(expiry_date, str):
+            expiry_date = datetime.datetime.fromisoformat(expiry_date)
+    else:
+        expiry_date = datetime.datetime.fromisoformat(license_data[6])
+    
     is_expired = datetime.datetime.now() > expiry_date
     
     # 검증 시간 업데이트
-    cursor.execute("""
-        UPDATE licenses 
-        SET last_verified = ?
-        WHERE license_key = ?
-    """, (datetime.datetime.now().isoformat(), license_key))
+    now = datetime.datetime.now()
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            UPDATE licenses 
+            SET last_verified = %s
+            WHERE license_key = %s
+        """, (now, license_key))
+    else:
+        cursor.execute("""
+            UPDATE licenses 
+            SET last_verified = ?
+            WHERE license_key = ?
+        """, (now.isoformat(), license_key))
     conn.commit()
     conn.close()
     
@@ -225,15 +289,23 @@ def create_license():
     license_key = generate_license_key()
     expiry_date = datetime.datetime.now() + datetime.timedelta(days=period_days)
     
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute("""
-        INSERT INTO licenses (license_key, customer_name, customer_email, 
-                           created_date, expiry_date, subscription_type)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (license_key, customer_name, customer_email, 
-          datetime.datetime.now().isoformat(), expiry_date.isoformat(), subscription_type))
+    now = datetime.datetime.now()
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            INSERT INTO licenses (license_key, customer_name, customer_email, 
+                               created_date, expiry_date, subscription_type)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (license_key, customer_name, customer_email, now, expiry_date, subscription_type))
+    else:
+        cursor.execute("""
+            INSERT INTO licenses (license_key, customer_name, customer_email, 
+                               created_date, expiry_date, subscription_type)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (license_key, customer_name, customer_email, 
+              now.isoformat(), expiry_date.isoformat(), subscription_type))
     
     conn.commit()
     conn.close()
@@ -252,11 +324,18 @@ def extend_license():
     period_days = data.get('period_days', 30)
     amount = data.get('amount', 0)
     
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
     
     # 기존 라이선스 확인
-    cursor.execute("SELECT * FROM licenses WHERE license_key = ?", (license_key,))
+    if USE_POSTGRESQL:
+        cursor.execute("SELECT * FROM licenses WHERE license_key = %s", (license_key,))
+    else:
+        cursor.execute("SELECT * FROM licenses WHERE license_key = ?", (license_key,))
+    
     license_data = cursor.fetchone()
     
     if not license_data:
@@ -264,7 +343,13 @@ def extend_license():
         return jsonify({'success': False, 'message': '라이선스를 찾을 수 없습니다.'}), 400
     
     # 만료일 연장
-    current_expiry = datetime.datetime.fromisoformat(license_data[6])
+    if USE_POSTGRESQL:
+        current_expiry = license_data.get('expiry_date')
+        if isinstance(current_expiry, str):
+            current_expiry = datetime.datetime.fromisoformat(current_expiry)
+    else:
+        current_expiry = datetime.datetime.fromisoformat(license_data[6])
+    
     if current_expiry < datetime.datetime.now():
         # 이미 만료된 경우 오늘부터 시작
         new_expiry = datetime.datetime.now() + datetime.timedelta(days=period_days)
@@ -272,17 +357,29 @@ def extend_license():
         # 아직 유효한 경우 기존 만료일부터 연장
         new_expiry = current_expiry + datetime.timedelta(days=period_days)
     
-    cursor.execute("""
-        UPDATE licenses 
-        SET expiry_date = ?
-        WHERE license_key = ?
-    """, (new_expiry.isoformat(), license_key))
-    
-    # 구독 기록 추가
-    cursor.execute("""
-        INSERT INTO subscriptions (license_key, payment_date, amount, period_days)
-        VALUES (?, ?, ?, ?)
-    """, (license_key, datetime.datetime.now().isoformat(), amount, period_days))
+    now = datetime.datetime.now()
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            UPDATE licenses 
+            SET expiry_date = %s
+            WHERE license_key = %s
+        """, (new_expiry, license_key))
+        
+        cursor.execute("""
+            INSERT INTO subscriptions (license_key, payment_date, amount, period_days)
+            VALUES (%s, %s, %s, %s)
+        """, (license_key, now, amount, period_days))
+    else:
+        cursor.execute("""
+            UPDATE licenses 
+            SET expiry_date = ?
+            WHERE license_key = ?
+        """, (new_expiry.isoformat(), license_key))
+        
+        cursor.execute("""
+            INSERT INTO subscriptions (license_key, payment_date, amount, period_days)
+            VALUES (?, ?, ?, ?)
+        """, (license_key, now.isoformat(), amount, period_days))
     
     conn.commit()
     conn.close()
@@ -309,14 +406,24 @@ def get_license_info():
     data = request.json
     license_key = data.get('license_key', '').upper()
     
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
     
-    cursor.execute("""
-        SELECT license_key, customer_name, expiry_date, subscription_type, last_verified
-        FROM licenses 
-        WHERE license_key = ?
-    """, (license_key,))
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT license_key, customer_name, expiry_date, subscription_type, last_verified
+            FROM licenses 
+            WHERE license_key = %s
+        """, (license_key,))
+    else:
+        cursor.execute("""
+            SELECT license_key, customer_name, expiry_date, subscription_type, last_verified
+            FROM licenses 
+            WHERE license_key = ?
+        """, (license_key,))
     
     license_data = cursor.fetchone()
     conn.close()
@@ -324,14 +431,31 @@ def get_license_info():
     if not license_data:
         return jsonify({'success': False, 'message': '라이선스를 찾을 수 없습니다.'}), 400
     
-    return jsonify({
-        'success': True,
-        'license_key': license_data[0],
-        'customer_name': license_data[1],
-        'expiry_date': license_data[2],
-        'subscription_type': license_data[3],
-        'last_verified': license_data[4]
-    })
+    if USE_POSTGRESQL:
+        expiry_date = license_data.get('expiry_date')
+        if hasattr(expiry_date, 'isoformat'):
+            expiry_date = expiry_date.isoformat()
+        last_verified = license_data.get('last_verified')
+        if last_verified and hasattr(last_verified, 'isoformat'):
+            last_verified = last_verified.isoformat()
+        
+        return jsonify({
+            'success': True,
+            'license_key': license_data.get('license_key'),
+            'customer_name': license_data.get('customer_name'),
+            'expiry_date': expiry_date,
+            'subscription_type': license_data.get('subscription_type'),
+            'last_verified': last_verified
+        })
+    else:
+        return jsonify({
+            'success': True,
+            'license_key': license_data[0],
+            'customer_name': license_data[1],
+            'expiry_date': license_data[2],
+            'subscription_type': license_data[3],
+            'last_verified': license_data[4]
+        })
 
 @app.route('/api/list_licenses', methods=['POST'])
 def list_licenses():
@@ -342,47 +466,94 @@ def list_licenses():
     if admin_key != ADMIN_KEY:
         return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
     
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
     
-    cursor.execute("""
-        SELECT license_key, customer_name, customer_email, expiry_date, 
-               subscription_type, is_active, last_verified, created_date
-        FROM licenses
-        ORDER BY created_date DESC
-    """)
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT license_key, customer_name, customer_email, expiry_date, 
+                   subscription_type, is_active, last_verified, created_date
+            FROM licenses
+            ORDER BY created_date DESC
+        """)
+    else:
+        cursor.execute("""
+            SELECT license_key, customer_name, customer_email, expiry_date, 
+                   subscription_type, is_active, last_verified, created_date
+            FROM licenses
+            ORDER BY created_date DESC
+        """)
     
     licenses = []
     for row in cursor.fetchall():
-        expiry_date = datetime.datetime.fromisoformat(row[3])
+        if USE_POSTGRESQL:
+            expiry_date_val = row.get('expiry_date')
+            if isinstance(expiry_date_val, str):
+                expiry_date = datetime.datetime.fromisoformat(expiry_date_val)
+            else:
+                expiry_date = expiry_date_val
+            license_key_val = row.get('license_key')
+        else:
+            expiry_date = datetime.datetime.fromisoformat(row[3])
+            license_key_val = row[0]
+        
         is_expired = datetime.datetime.now() > expiry_date
         
         # 사용 통계 조회
-        cursor.execute("""
-            SELECT 
-                COUNT(*) as run_count,
-                SUM(total_invoices) as total_invoices,
-                MAX(usage_date) as last_usage
-            FROM usage_stats
-            WHERE license_key = ?
-        """, (row[0],))
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as run_count,
+                    SUM(total_invoices) as total_invoices,
+                    MAX(usage_date) as last_usage
+                FROM usage_stats
+                WHERE license_key = %s
+            """, (license_key_val,))
+        else:
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as run_count,
+                    SUM(total_invoices) as total_invoices,
+                    MAX(usage_date) as last_usage
+                FROM usage_stats
+                WHERE license_key = ?
+            """, (license_key_val,))
         
         usage_data = cursor.fetchone()
         
-        licenses.append({
-            'license_key': row[0],
-            'customer_name': row[1] or '',
-            'customer_email': row[2] or '',
-            'expiry_date': row[3],
-            'subscription_type': row[4],
-            'is_active': bool(row[5]),
-            'is_expired': is_expired,
-            'last_verified': row[6],
-            'created_date': row[7],
-            'run_count': usage_data[0] or 0,
-            'total_invoices': usage_data[1] or 0,
-            'last_usage': usage_data[2]
-        })
+        if USE_POSTGRESQL:
+            licenses.append({
+                'license_key': row.get('license_key'),
+                'customer_name': row.get('customer_name') or '',
+                'customer_email': row.get('customer_email') or '',
+                'expiry_date': row.get('expiry_date').isoformat() if hasattr(row.get('expiry_date'), 'isoformat') else str(row.get('expiry_date')),
+                'subscription_type': row.get('subscription_type'),
+                'is_active': bool(row.get('is_active')),
+                'is_expired': is_expired,
+                'last_verified': row.get('last_verified').isoformat() if row.get('last_verified') and hasattr(row.get('last_verified'), 'isoformat') else (row.get('last_verified') or ''),
+                'created_date': row.get('created_date').isoformat() if hasattr(row.get('created_date'), 'isoformat') else str(row.get('created_date')),
+                'run_count': usage_data[0] or 0 if usage_data else 0,
+                'total_invoices': usage_data[1] or 0 if usage_data else 0,
+                'last_usage': usage_data[2].isoformat() if usage_data and usage_data[2] and hasattr(usage_data[2], 'isoformat') else (usage_data[2] if usage_data else None)
+            })
+        else:
+            licenses.append({
+                'license_key': row[0],
+                'customer_name': row[1] or '',
+                'customer_email': row[2] or '',
+                'expiry_date': row[3],
+                'subscription_type': row[4],
+                'is_active': bool(row[5]),
+                'is_expired': is_expired,
+                'last_verified': row[6],
+                'created_date': row[7],
+                'run_count': usage_data[0] or 0,
+                'total_invoices': usage_data[1] or 0,
+                'last_usage': usage_data[2]
+            })
     
     conn.close()
     
@@ -400,7 +571,7 @@ def get_stats():
     if admin_key != ADMIN_KEY:
         return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
     
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     # 전체 라이선스 수
@@ -408,18 +579,30 @@ def get_stats():
     total_licenses = cursor.fetchone()[0]
     
     # 활성 라이선스 수
-    now = datetime.datetime.now().isoformat()
-    cursor.execute("""
-        SELECT COUNT(*) FROM licenses 
-        WHERE expiry_date > ? AND is_active = 1
-    """, (now,))
+    now = datetime.datetime.now()
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT COUNT(*) FROM licenses 
+            WHERE expiry_date > %s AND is_active = TRUE
+        """, (now,))
+    else:
+        cursor.execute("""
+            SELECT COUNT(*) FROM licenses 
+            WHERE expiry_date > ? AND is_active = 1
+        """, (now.isoformat(),))
     active_licenses = cursor.fetchone()[0]
     
     # 만료된 라이선스 수
-    cursor.execute("""
-        SELECT COUNT(*) FROM licenses 
-        WHERE expiry_date <= ? OR is_active = 0
-    """, (now,))
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT COUNT(*) FROM licenses 
+            WHERE expiry_date <= %s OR is_active = FALSE
+        """, (now,))
+    else:
+        cursor.execute("""
+            SELECT COUNT(*) FROM licenses 
+            WHERE expiry_date <= ? OR is_active = 0
+        """, (now.isoformat(),))
     expired_licenses = cursor.fetchone()[0]
     
     # 총 수익
@@ -436,15 +619,203 @@ def get_stats():
         'total_revenue': total_revenue
     })
 
+@app.route('/api/record_usage', methods=['POST'])
+def record_usage():
+    """사용 통계 기록"""
+    data = request.json
+    license_key = data.get('license_key', '').upper()
+    hardware_id = data.get('hardware_id', '')
+    total_invoices = data.get('total_invoices', 0)
+    success_count = data.get('success_count', 0)
+    fail_count = data.get('fail_count', 0)
+    
+    if not license_key or not hardware_id:
+        return jsonify({'success': False, 'message': '라이선스 키와 하드웨어 ID가 필요합니다.'}), 400
+    
+    # 라이선스 및 하드웨어 ID 검증
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT hardware_id FROM licenses 
+            WHERE license_key = %s AND hardware_id = %s AND is_active = TRUE
+        """, (license_key, hardware_id))
+    else:
+        cursor.execute("""
+            SELECT hardware_id FROM licenses 
+            WHERE license_key = ? AND hardware_id = ? AND is_active = 1
+        """, (license_key, hardware_id))
+    
+    if not cursor.fetchone():
+        conn.close()
+        return jsonify({'success': False, 'message': '유효하지 않은 라이선스입니다.'}), 400
+    
+    # 사용 통계 저장
+    now = datetime.datetime.now()
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            INSERT INTO usage_stats (license_key, usage_date, total_invoices, success_count, fail_count)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (license_key, now, total_invoices, success_count, fail_count))
+        
+        # 마지막 사용 시간 업데이트
+        cursor.execute("""
+            UPDATE licenses 
+            SET last_verified = %s
+            WHERE license_key = %s
+        """, (now, license_key))
+    else:
+        cursor.execute("""
+            INSERT INTO usage_stats (license_key, usage_date, total_invoices, success_count, fail_count)
+            VALUES (?, ?, ?, ?, ?)
+        """, (license_key, now.isoformat(), total_invoices, success_count, fail_count))
+        
+        # 마지막 사용 시간 업데이트
+        cursor.execute("""
+            UPDATE licenses 
+            SET last_verified = ?
+            WHERE license_key = ?
+        """, (now.isoformat(), license_key))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({
+        'success': True,
+        'message': '사용 통계가 기록되었습니다.'
+    })
+
+@app.route('/api/usage_stats', methods=['POST'])
+def get_usage_stats():
+    """사용 통계 조회 (관리자용)"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    license_key = data.get('license_key', '').upper()
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    if license_key:
+        # 특정 라이선스 통계
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total_runs,
+                    SUM(total_invoices) as total_invoices,
+                    SUM(success_count) as total_success,
+                    SUM(fail_count) as total_fail,
+                    MAX(usage_date) as last_usage
+                FROM usage_stats
+                WHERE license_key = %s
+            """, (license_key,))
+        else:
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total_runs,
+                    SUM(total_invoices) as total_invoices,
+                    SUM(success_count) as total_success,
+                    SUM(fail_count) as total_fail,
+                    MAX(usage_date) as last_usage
+                FROM usage_stats
+                WHERE license_key = ?
+            """, (license_key,))
+    else:
+        # 전체 통계
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_runs,
+                SUM(total_invoices) as total_invoices,
+                SUM(success_count) as total_success,
+                SUM(fail_count) as total_fail,
+                MAX(usage_date) as last_usage
+            FROM usage_stats
+        """)
+    
+    result = cursor.fetchone()
+    
+    # 라이선스별 상세 통계
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT 
+                license_key,
+                COUNT(*) as run_count,
+                SUM(total_invoices) as total_invoices,
+                SUM(success_count) as total_success,
+                SUM(fail_count) as total_fail,
+                MAX(usage_date) as last_usage
+            FROM usage_stats
+            GROUP BY license_key
+            ORDER BY last_usage DESC
+        """)
+    else:
+        cursor.execute("""
+            SELECT 
+                license_key,
+                COUNT(*) as run_count,
+                SUM(total_invoices) as total_invoices,
+                SUM(success_count) as total_success,
+                SUM(fail_count) as total_fail,
+                MAX(usage_date) as last_usage
+            FROM usage_stats
+            GROUP BY license_key
+            ORDER BY last_usage DESC
+        """)
+    
+    license_stats = []
+    for row in cursor.fetchall():
+        if USE_POSTGRESQL:
+            license_stats.append({
+                'license_key': row[0],
+                'run_count': row[1],
+                'total_invoices': row[2] or 0,
+                'total_success': row[3] or 0,
+                'total_fail': row[4] or 0,
+                'last_usage': row[5].isoformat() if row[5] and hasattr(row[5], 'isoformat') else (row[5] or '')
+            })
+        else:
+            license_stats.append({
+                'license_key': row[0],
+                'run_count': row[1],
+                'total_invoices': row[2] or 0,
+                'total_success': row[3] or 0,
+                'total_fail': row[4] or 0,
+                'last_usage': row[5]
+            })
+    
+    conn.close()
+    
+    return jsonify({
+        'success': True,
+        'summary': {
+            'total_runs': result[0] or 0,
+            'total_invoices': result[1] or 0,
+            'total_success': result[2] or 0,
+            'total_fail': result[3] or 0,
+            'last_usage': result[4].isoformat() if result[4] and hasattr(result[4], 'isoformat') else (result[4] or '')
+        },
+        'by_license': license_stats
+    })
+
 if __name__ == '__main__':
     # 데이터베이스 초기화
-    DB_PATH.parent.mkdir(exist_ok=True)
+    if not USE_POSTGRESQL:
+        DB_PATH.parent.mkdir(exist_ok=True)
     init_db()
     
     print("=" * 60)
     print("라이선스 서버 시작")
     print("=" * 60)
-    print(f"데이터베이스: {DB_PATH}")
+    if USE_POSTGRESQL:
+        print("데이터베이스: PostgreSQL (Railway)")
+    else:
+        print(f"데이터베이스: SQLite ({DB_PATH})")
     print("서버 주소: http://localhost:5000")
     print("=" * 60)
     
