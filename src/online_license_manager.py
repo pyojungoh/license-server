@@ -208,6 +208,53 @@ class OnlineLicenseManager:
             "hardware_id": self.hardware_id[:8] + "..."
         }
     
+    def record_usage(self, total_invoices: int, success_count: int, fail_count: int) -> Tuple[bool, str]:
+        """
+        사용 통계 기록
+        
+        Args:
+            total_invoices: 총 송장 수
+            success_count: 성공 건수
+            fail_count: 실패 건수
+            
+        Returns:
+            (성공 여부, 메시지)
+        """
+        if not self.license_data:
+            return False, "라이선스가 등록되지 않았습니다."
+        
+        license_key = self.license_data.get("license_key", "")
+        
+        try:
+            response = requests.post(
+                f"{self.server_url}/api/record_usage",
+                json={
+                    "license_key": license_key,
+                    "hardware_id": self.hardware_id,
+                    "total_invoices": total_invoices,
+                    "success_count": success_count,
+                    "fail_count": fail_count
+                },
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    logger.info("사용 통계 기록 성공")
+                    return True, "사용 통계가 기록되었습니다."
+                else:
+                    return False, data.get('message', '사용 통계 기록 실패')
+            else:
+                return False, "서버 오류가 발생했습니다."
+                
+        except requests.exceptions.ConnectionError:
+            logger.warning("서버 연결 실패, 통계 기록 건너뜀")
+            return False, "서버에 연결할 수 없습니다. 통계는 기록되지 않았습니다."
+        except Exception as e:
+            logger.error(f"사용 통계 기록 오류: {e}")
+            return False, f"오류가 발생했습니다: {str(e)}"
+    
     def extend_license(self, period_days: int = 30, amount: float = 0) -> Tuple[bool, str]:
         """
         라이선스 연장 (구독 갱신)

@@ -57,6 +57,25 @@ def init_db():
         )
     """)
     
+    # 사용 통계 테이블
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS usage_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            license_key TEXT NOT NULL,
+            usage_date TEXT NOT NULL,
+            total_invoices INTEGER NOT NULL DEFAULT 0,
+            success_count INTEGER NOT NULL DEFAULT 0,
+            fail_count INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (license_key) REFERENCES licenses(license_key)
+        )
+    """)
+    
+    # 인덱스 생성 (조회 성능 향상)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_usage_stats_license_date 
+        ON usage_stats(license_key, usage_date)
+    """)
+    
     conn.commit()
     conn.close()
 
@@ -333,6 +352,18 @@ def list_licenses():
         expiry_date = datetime.datetime.fromisoformat(row[3])
         is_expired = datetime.datetime.now() > expiry_date
         
+        # 사용 통계 조회
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as run_count,
+                SUM(total_invoices) as total_invoices,
+                MAX(usage_date) as last_usage
+            FROM usage_stats
+            WHERE license_key = ?
+        """, (row[0],))
+        
+        usage_data = cursor.fetchone()
+        
         licenses.append({
             'license_key': row[0],
             'customer_name': row[1] or '',
@@ -342,7 +373,10 @@ def list_licenses():
             'is_active': bool(row[5]),
             'is_expired': is_expired,
             'last_verified': row[6],
-            'created_date': row[7]
+            'created_date': row[7],
+            'run_count': usage_data[0] or 0,
+            'total_invoices': usage_data[1] or 0,
+            'last_usage': usage_data[2]
         })
     
     conn.close()

@@ -559,6 +559,21 @@ class HanjinAutomationApp:
             self.progress_var.set(f"완료! 성공: {success_count}건, 실패: {fail_count}건")
             messagebox.showinfo("완료", f"처리 완료!\n성공: {success_count}건\n실패: {fail_count}건")
             
+            # 사용 통계 서버에 전송
+            try:
+                self.log("사용 통계 전송 중...")
+                success, msg = self.license_manager.record_usage(
+                    total_invoices=total,
+                    success_count=success_count,
+                    fail_count=fail_count
+                )
+                if success:
+                    self.log("사용 통계 전송 완료")
+                else:
+                    self.log(f"통계 전송 실패: {msg}")
+            except Exception as stat_error:
+                self.log(f"통계 전송 오류: {stat_error}")
+            
         except Exception as e:
             self.log(f"오류 발생: {e}")
             messagebox.showerror("오류", f"오류가 발생했습니다:\n{e}")

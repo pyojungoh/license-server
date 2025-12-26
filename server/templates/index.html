@@ -519,7 +519,7 @@
                         return;
                     }
                     
-                    let html = '<table><thead><tr><th>라이선스 키</th><th>고객명</th><th>이메일</th><th>만료일</th><th>상태</th><th>구독 유형</th><th>마지막 검증</th></tr></thead><tbody>';
+                    let html = '<table><thead><tr><th>라이선스 키</th><th>고객명</th><th>이메일</th><th>만료일</th><th>상태</th><th>구독 유형</th><th>실행 횟수</th><th>총 송장 수</th><th>마지막 사용</th></tr></thead><tbody>';
                     
                     result.licenses.forEach(license => {
                         const expiryDate = new Date(license.expiry_date);
@@ -527,6 +527,8 @@
                         const statusBadge = isExpired ? 
                             '<span class="badge badge-expired">만료</span>' : 
                             '<span class="badge badge-active">활성</span>';
+                        
+                        const lastUsage = license.last_usage ? new Date(license.last_usage).toLocaleString('ko-KR') : '-';
                         
                         html += `
                             <tr>
@@ -536,7 +538,9 @@
                                 <td>${expiryDate.toLocaleDateString('ko-KR')}</td>
                                 <td>${statusBadge}</td>
                                 <td>${license.subscription_type || '-'}</td>
-                                <td>${license.last_verified ? new Date(license.last_verified).toLocaleString('ko-KR') : '-'}</td>
+                                <td>${license.run_count || 0}회</td>
+                                <td>${license.total_invoices || 0}건</td>
+                                <td>${lastUsage}</td>
                             </tr>
                         `;
                     });
