@@ -1,3 +1,3 @@
 web: gunicorn wsgi:app --bind 0.0.0.0:$PORT
-release: python -c "from license_server import init_db; import os; init_db() if os.environ.get('FORCE_INIT_DB') == 'true' else None"
+release: python -c "from license_server import init_db; init_db()"
 
