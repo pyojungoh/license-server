@@ -493,6 +493,71 @@ def index():
     """웹 관리자 페이지"""
     return render_template('index.html')
 
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """데이터베이스 연결 상태 확인"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 데이터베이스 타입 확인
+        if USE_POSTGRESQL:
+            cursor.execute("SELECT version();")
+            db_version = cursor.fetchone()[0]
+            db_type = "PostgreSQL"
+            
+            # 테이블 존재 확인
+            cursor.execute("""
+                SELECT COUNT(*) FROM information_schema.tables 
+                WHERE table_name = 'licenses'
+            """)
+            table_exists = cursor.fetchone()[0] > 0
+            
+            # 데이터 개수 확인
+            if table_exists:
+                cursor.execute("SELECT COUNT(*) FROM licenses")
+                license_count = cursor.fetchone()[0]
+            else:
+                license_count = 0
+        else:
+            cursor.execute("SELECT sqlite_version();")
+            db_version = cursor.fetchone()[0]
+            db_type = "SQLite"
+            
+            # 테이블 존재 확인
+            cursor.execute("""
+                SELECT COUNT(*) FROM sqlite_master 
+                WHERE type='table' AND name='licenses'
+            """)
+            table_exists = cursor.fetchone()[0] > 0
+            
+            # 데이터 개수 확인
+            if table_exists:
+                cursor.execute("SELECT COUNT(*) FROM licenses")
+                license_count = cursor.fetchone()[0]
+            else:
+                license_count = 0
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'database_type': db_type,
+            'database_version': db_version,
+            'connected': True,
+            'table_exists': table_exists,
+            'license_count': license_count,
+            'database_url_set': USE_POSTGRESQL
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'connected': False,
+            'error': str(e),
+            'traceback': traceback.format_exc() if os.environ.get('DEBUG') == 'True' else None
+        }), 500
+
 @app.route('/api/license_info', methods=['POST'])
 def get_license_info():
     """라이선스 정보 조회"""

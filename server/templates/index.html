@@ -228,7 +228,11 @@
         <!-- 대시보드 -->
         <div id="dashboard" class="tab-content active">
             <h2>대시보드</h2>
+            <div id="db-status" style="margin-bottom: 20px; padding: 10px; border-radius: 5px; background: #f0f0f0;">
+                <strong>데이터베이스 상태:</strong> <span id="db-status-text">확인 중...</span>
+            </div>
             <button onclick="loadDashboard()" class="secondary" style="margin-bottom: 20px;">새로고침</button>
+            <button onclick="checkDatabase()" class="secondary" style="margin-bottom: 20px; margin-left: 10px;">DB 연결 확인</button>
             <div class="stats" id="stats">
                 <div class="stat-card">
                     <h3 id="total-licenses">-</h3>
@@ -521,8 +525,39 @@
             }
         }
         
-        // 페이지 로드 시 대시보드 자동 로드
+        // 데이터베이스 연결 상태 확인
+        async function checkDatabase() {
+            const statusDiv = document.getElementById('db-status');
+            const statusText = document.getElementById('db-status-text');
+            
+            statusText.textContent = '확인 중...';
+            statusDiv.style.background = '#fff3cd';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/health`);
+                const result = await response.json();
+                
+                if (result.success && result.connected) {
+                    statusDiv.style.background = '#d4edda';
+                    statusText.innerHTML = `
+                        <strong style="color: #155724;">✓ 연결됨</strong> - 
+                        타입: ${result.database_type} | 
+                        테이블: ${result.table_exists ? '존재' : '없음'} | 
+                        라이선스: ${result.license_count}개
+                    `;
+                } else {
+                    statusDiv.style.background = '#f8d7da';
+                    statusText.innerHTML = `<strong style="color: #721c24;">✗ 연결 실패</strong> - ${result.error || '알 수 없는 오류'}`;
+                }
+            } catch (error) {
+                statusDiv.style.background = '#f8d7da';
+                statusText.innerHTML = `<strong style="color: #721c24;">✗ 연결 실패</strong> - ${error.message}`;
+            }
+        }
+        
+        // 페이지 로드 시 대시보드 자동 로드 및 DB 상태 확인
         window.addEventListener('DOMContentLoaded', function() {
+            checkDatabase();
             loadDashboard();
         });
         
