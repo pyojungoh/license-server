@@ -697,126 +697,127 @@ def get_license_info():
 @app.route('/api/list_licenses', methods=['POST'])
 def list_licenses():
     """라이선스 목록 조회 (관리자용)"""
-    data = request.json
-    admin_key = data.get('admin_key', '')
-    
-    if admin_key != ADMIN_KEY:
-        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
-    
-    conn = get_db_connection()
-    if USE_POSTGRESQL:
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-    else:
-        cursor = conn.cursor()
-    
-    if USE_POSTGRESQL:
-        cursor.execute("""
-            SELECT license_key, customer_name, customer_email, expiry_date, 
-                   subscription_type, is_active, last_verified, created_date
-            FROM licenses
-            ORDER BY created_date DESC
-        """)
-    else:
-        cursor.execute("""
-            SELECT license_key, customer_name, customer_email, expiry_date, 
-                   subscription_type, is_active, last_verified, created_date
-            FROM licenses
-            ORDER BY created_date DESC
-        """)
-    
-    licenses = []
-    for row in cursor.fetchall():
+    conn = None
+    cursor = None
+    try:
+        if not request.is_json:
+            return jsonify({'success': False, 'message': 'Content-Type이 application/json이어야 합니다.'}), 400
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': '요청 데이터가 없습니다.'}), 400
+        
+        admin_key = data.get('admin_key', '')
+        
+        if admin_key != ADMIN_KEY:
+            return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+        
+        conn = get_db_connection()
         if USE_POSTGRESQL:
-            expiry_date_val = row.get('expiry_date')
-            if isinstance(expiry_date_val, str):
-                expiry_date = datetime.datetime.fromisoformat(expiry_date_val)
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
+        
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                SELECT license_key, customer_name, customer_email, expiry_date, 
+                       subscription_type, is_active, last_verified, created_date
+                FROM licenses
+                ORDER BY created_date DESC
+            """)
+        else:
+            cursor.execute("""
+                SELECT license_key, customer_name, customer_email, expiry_date, 
+                       subscription_type, is_active, last_verified, created_date
+                FROM licenses
+                ORDER BY created_date DESC
+            """)
+        
+        licenses = []
+        for row in cursor.fetchall():
+            if USE_POSTGRESQL:
+                expiry_date_val = row.get('expiry_date')
+                if isinstance(expiry_date_val, str):
+                    expiry_date = datetime.datetime.fromisoformat(expiry_date_val)
+                else:
+                    expiry_date = expiry_date_val
+                license_key_val = row.get('license_key')
             else:
-                expiry_date = expiry_date_val
-            license_key_val = row.get('license_key')
-        else:
-            expiry_date = datetime.datetime.fromisoformat(row[3])
-            license_key_val = row[0]
-        
-        is_expired = datetime.datetime.now() > expiry_date
-        
-        # 사용 통계 조회
-        if USE_POSTGRESQL:
-            cursor.execute("""
-                SELECT 
-                    COUNT(*) as run_count,
-                    SUM(total_invoices) as total_invoices,
-                    MAX(usage_date) as last_usage
-                FROM usage_stats
-                WHERE license_key = %s
-            """, (license_key_val,))
-        else:
-            cursor.execute("""
-                SELECT 
-                    COUNT(*) as run_count,
-                    SUM(total_invoices) as total_invoices,
-                    MAX(usage_date) as last_usage
-                FROM usage_stats
-                WHERE license_key = ?
-            """, (license_key_val,))
-        
-        usage_data = cursor.fetchone()
-        
-        if USE_POSTGRESQL:
-            licenses.append({
-                'license_key': row.get('license_key'),
-                'customer_name': row.get('customer_name') or '',
-                'customer_email': row.get('customer_email') or '',
-                'expiry_date': row.get('expiry_date').isoformat() if hasattr(row.get('expiry_date'), 'isoformat') else str(row.get('expiry_date')),
-                'subscription_type': row.get('subscription_type'),
-                'is_active': bool(row.get('is_active')),
-                'is_expired': is_expired,
-                'last_verified': row.get('last_verified').isoformat() if row.get('last_verified') and hasattr(row.get('last_verified'), 'isoformat') else (row.get('last_verified') or ''),
-                'created_date': row.get('created_date').isoformat() if hasattr(row.get('created_date'), 'isoformat') else str(row.get('created_date')),
-                'run_count': usage_data[0] or 0 if usage_data else 0,
-                'total_invoices': usage_data[1] or 0 if usage_data else 0,
-                'last_usage': usage_data[2].isoformat() if usage_data and usage_data[2] and hasattr(usage_data[2], 'isoformat') else (usage_data[2] if usage_data else None)
-            })
-        else:
-            licenses.append({
-                'license_key': row[0],
-                'customer_name': row[1] or '',
-                'customer_email': row[2] or '',
-                'expiry_date': row[3],
-                'subscription_type': row[4],
-                'is_active': bool(row[5]),
-                'is_expired': is_expired,
-                'last_verified': row[6],
-                'created_date': row[7],
-                'run_count': usage_data[0] or 0,
-                'total_invoices': usage_data[1] or 0,
-                'last_usage': usage_data[2]
-            })
-    
-            conn.close()
+                expiry_date = datetime.datetime.fromisoformat(row[3])
+                license_key_val = row[0]
             
-            return jsonify({
-                'success': True,
-                'licenses': licenses
-            })
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            logger.error(f"라이선스 목록 조회 중 오류: {e}", exc_info=True)
-            return jsonify({
-                'success': False,
-                'message': f'라이선스 목록 조회 실패: {str(e)}'
-            }), 500
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
+            is_expired = datetime.datetime.now() > expiry_date
+            
+            # 사용 통계 조회
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as run_count,
+                        SUM(total_invoices) as total_invoices,
+                        MAX(usage_date) as last_usage
+                    FROM usage_stats
+                    WHERE license_key = %s
+                """, (license_key_val,))
+            else:
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as run_count,
+                        SUM(total_invoices) as total_invoices,
+                        MAX(usage_date) as last_usage
+                    FROM usage_stats
+                    WHERE license_key = ?
+                """, (license_key_val,))
+            
+            usage_data = cursor.fetchone()
+            
+            if USE_POSTGRESQL:
+                licenses.append({
+                    'license_key': row.get('license_key'),
+                    'customer_name': row.get('customer_name') or '',
+                    'customer_email': row.get('customer_email') or '',
+                    'expiry_date': row.get('expiry_date').isoformat() if hasattr(row.get('expiry_date'), 'isoformat') else str(row.get('expiry_date')),
+                    'subscription_type': row.get('subscription_type'),
+                    'is_active': bool(row.get('is_active')),
+                    'is_expired': is_expired,
+                    'last_verified': row.get('last_verified').isoformat() if row.get('last_verified') and hasattr(row.get('last_verified'), 'isoformat') else (row.get('last_verified') or ''),
+                    'created_date': row.get('created_date').isoformat() if hasattr(row.get('created_date'), 'isoformat') else str(row.get('created_date')),
+                    'run_count': usage_data[0] or 0 if usage_data else 0,
+                    'total_invoices': usage_data[1] or 0 if usage_data else 0,
+                    'last_usage': usage_data[2].isoformat() if usage_data and usage_data[2] and hasattr(usage_data[2], 'isoformat') else (usage_data[2] if usage_data else None)
+                })
+            else:
+                licenses.append({
+                    'license_key': row[0],
+                    'customer_name': row[1] or '',
+                    'customer_email': row[2] or '',
+                    'expiry_date': row[3],
+                    'subscription_type': row[4],
+                    'is_active': bool(row[5]),
+                    'is_expired': is_expired,
+                    'last_verified': row[6],
+                    'created_date': row[7],
+                    'run_count': usage_data[0] or 0,
+                    'total_invoices': usage_data[1] or 0,
+                    'last_usage': usage_data[2]
+                })
+        
+        return jsonify({
+            'success': True,
+            'licenses': licenses
+        })
     except Exception as e:
-        logger.error(f"라이선스 목록 API 오류: {e}", exc_info=True)
+        if conn:
+            conn.rollback()
+        logger.error(f"라이선스 목록 조회 중 오류: {e}", exc_info=True)
         return jsonify({
             'success': False,
-            'message': f'서버 오류: {str(e)}'
+            'message': f'라이선스 목록 조회 실패: {str(e)}'
         }), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/stats', methods=['POST'])
 def get_stats():
