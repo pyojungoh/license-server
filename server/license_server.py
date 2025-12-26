@@ -792,12 +792,31 @@ def list_licenses():
                 'last_usage': usage_data[2]
             })
     
-    conn.close()
-    
-    return jsonify({
-        'success': True,
-        'licenses': licenses
-    })
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'licenses': licenses
+            })
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"라이선스 목록 조회 중 오류: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': f'라이선스 목록 조회 실패: {str(e)}'
+            }), 500
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+    except Exception as e:
+        logger.error(f"라이선스 목록 API 오류: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': f'서버 오류: {str(e)}'
+        }), 500
 
 @app.route('/api/stats', methods=['POST'])
 def get_stats():
