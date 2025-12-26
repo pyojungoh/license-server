@@ -27,7 +27,8 @@ ADMIN_KEY = os.environ.get('ADMIN_KEY', '2133781qQ!!@#')
 # Railway PostgreSQL 사용 (DATABASE_URL 환경변수)
 # 없으면 로컬 SQLite 사용
 DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
-USE_POSTGRESQL = bool(DATABASE_URL and DATABASE_URL.startswith('postgres'))
+# PostgreSQL 감지: postgresql:// 또는 postgres://로 시작하는지 확인
+USE_POSTGRESQL = bool(DATABASE_URL and (DATABASE_URL.startswith('postgresql://') or DATABASE_URL.startswith('postgres://')))
 
 if not USE_POSTGRESQL:
     # 로컬 개발용 SQLite
