@@ -75,7 +75,8 @@ class HanjinAutomationApp:
             "serial": {"port": "COM3", "baudrate": 115200, "timeout": 1.0},
             "delays": {"min_between": 1.0, "max_between": 2.0},
             "retry": {"max_attempts": 3, "retry_delay": 2.0},
-            "excel": {"file_path": "", "column_name": "InvoiceNumber", "sheet_name": "Sheet1"}
+            "excel": {"file_path": "", "column_name": "InvoiceNumber", "sheet_name": "Sheet1"},
+            "license_server": {"url": "https://license-server-production-e83a.up.railway.app"}
         }
     
     def save_config(self):

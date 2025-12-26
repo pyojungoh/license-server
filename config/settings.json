@@ -16,5 +16,8 @@
     "file_path": "C:/hanjin/data/invoices.xlsx",
     "column_name": "InvoiceNumber",
     "sheet_name": "Sheet1"
+  },
+  "license_server": {
+    "url": "https://license-server-production-e83a.up.railway.app"
   }
 }
