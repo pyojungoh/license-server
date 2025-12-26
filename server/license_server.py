@@ -908,7 +908,10 @@ def toggle_license():
             return jsonify({'success': False, 'message': '라이선스 키가 필요합니다.'}), 400
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        if USE_POSTGRESQL:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
         
         # 현재 상태 확인
         if USE_POSTGRESQL:
@@ -920,7 +923,12 @@ def toggle_license():
         if not result:
             return jsonify({'success': False, 'message': '라이선스를 찾을 수 없습니다.'}), 404
         
-        current_status = result[0] if not USE_POSTGRESQL else result['is_active']
+        # PostgreSQL과 SQLite에서 데이터 추출 방식이 다름
+        if USE_POSTGRESQL:
+            current_status = result.get('is_active') if isinstance(result, dict) else result[0]
+        else:
+            current_status = result[0]
+        
         new_status = not bool(current_status)
         
         # 상태 업데이트
