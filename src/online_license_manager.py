@@ -6,12 +6,23 @@
 import json
 import datetime
 import requests
+import os
 from pathlib import Path
 from typing import Optional, Dict, Tuple
 import logging
 from hardware_id import get_hardware_id
 
 logger = logging.getLogger(__name__)
+
+# 개발 모드: 환경 변수 또는 개발 모드 파일로 제어
+DEV_MODE = os.environ.get('DEV_MODE', 'False').lower() == 'true'
+DEV_MODE_FILE = Path(__file__).parent.parent / "config" / "dev_mode.txt"
+if DEV_MODE_FILE.exists():
+    try:
+        with open(DEV_MODE_FILE, 'r', encoding='utf-8') as f:
+            DEV_MODE = f.read().strip().lower() == 'true'
+    except:
+        pass
 
 class OnlineLicenseManager:
     """온라인 라이선스 관리 클래스"""
@@ -111,6 +122,11 @@ class OnlineLicenseManager:
         Returns:
             (유효 여부, 메시지)
         """
+        # 개발 모드: 라이선스 검증 우회
+        if DEV_MODE:
+            logger.warning("⚠️ 개발 모드: 라이선스 검증을 우회합니다.")
+            return True, "라이선스가 유효합니다. (개발 모드)"
+        
         if not self.license_data:
             return False, "라이선스가 등록되지 않았습니다."
         

@@ -90,6 +90,21 @@ class HanjinAutomationApp:
     
     def check_license(self):
         """라이선스 확인 (프로그램 시작 시 강제 온라인 검증)"""
+        # 개발 모드 확인
+        dev_mode_file = Path(__file__).parent.parent / "config" / "dev_mode.txt"
+        is_dev_mode = False
+        if dev_mode_file.exists():
+            try:
+                with open(dev_mode_file, 'r', encoding='utf-8') as f:
+                    is_dev_mode = f.read().strip().lower() == 'true'
+            except:
+                pass
+        
+        if is_dev_mode:
+            # 개발 모드: 라이선스 검증 우회
+            self.log("⚠️ 개발 모드: 라이선스 검증을 우회합니다.")
+            return True
+        
         # 프로그램 시작 시 항상 온라인 검증 수행
         valid, message = self.license_manager.verify_license(force_online=True)
         if not valid:
@@ -460,11 +475,22 @@ class HanjinAutomationApp:
     
     def start_automation(self):
         """동기화 실행 (자동화 시작)"""
-        # 자동화 시작 전 라이선스 검증 (강제 온라인 검증)
-        valid, message = self.license_manager.verify_license(force_online=True)
-        if not valid:
-            messagebox.showerror("라이선스 오류", f"라이선스 검증 실패:\n{message}\n\n프로그램을 사용할 수 없습니다.")
-            return
+        # 개발 모드 확인
+        dev_mode_file = Path(__file__).parent.parent / "config" / "dev_mode.txt"
+        is_dev_mode = False
+        if dev_mode_file.exists():
+            try:
+                with open(dev_mode_file, 'r', encoding='utf-8') as f:
+                    is_dev_mode = f.read().strip().lower() == 'true'
+            except:
+                pass
+        
+        if not is_dev_mode:
+            # 자동화 시작 전 라이선스 검증 (강제 온라인 검증)
+            valid, message = self.license_manager.verify_license(force_online=True)
+            if not valid:
+                messagebox.showerror("라이선스 오류", f"라이선스 검증 실패:\n{message}\n\n프로그램을 사용할 수 없습니다.")
+                return
         if self.is_running:
             return
         
