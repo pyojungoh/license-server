@@ -22,7 +22,12 @@ CORS(app)  # CORS 허용 (클라이언트에서 접근 가능하도록)
 ADMIN_KEY = os.environ.get('ADMIN_KEY', '2133781qQ!!@#')
 
 # 데이터베이스 초기화
-DB_PATH = Path(__file__).parent / "licenses.db"
+# Railway Volume을 사용하거나 환경변수로 경로 지정
+# Volume이 마운트되면 /app/data, 없으면 /app 사용
+volume_path = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH', '/app/data')
+DB_DIR = Path(volume_path)
+DB_DIR.mkdir(parents=True, exist_ok=True)  # 디렉토리 생성
+DB_PATH = DB_DIR / "licenses.db"
 
 def init_db():
     """데이터베이스 초기화"""
