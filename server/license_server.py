@@ -62,9 +62,36 @@ def get_db_connection():
         return sqlite3.connect(DB_PATH)
 
 def init_db():
-    """데이터베이스 초기화"""
+    """데이터베이스 초기화 (안전하게 - 기존 데이터 보존)"""
     conn = get_db_connection()
     cursor = conn.cursor()
+    
+    # 기존 데이터 확인
+    try:
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                SELECT COUNT(*) FROM information_schema.tables 
+                WHERE table_name = 'licenses'
+            """)
+        else:
+            cursor.execute("""
+                SELECT COUNT(*) FROM sqlite_master 
+                WHERE type='table' AND name='licenses'
+            """)
+        table_exists = cursor.fetchone()[0] > 0
+        
+        if table_exists:
+            # 기존 데이터 개수 확인
+            cursor.execute("SELECT COUNT(*) FROM licenses")
+            existing_count = cursor.fetchone()[0]
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"기존 테이블 발견: {existing_count}개의 라이선스가 있습니다. 데이터를 보존합니다.")
+    except Exception as e:
+        # 테이블이 없으면 생성
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"테이블이 없습니다. 새로 생성합니다: {e}")
     
     if USE_POSTGRESQL:
         # PostgreSQL 테이블 생성
