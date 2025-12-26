@@ -14,6 +14,26 @@ import datetime
 from pathlib import Path
 import json
 import os
+
+# db_helper 모듈 import
+try:
+    from db_helper import get_db_connection, USE_POSTGRESQL
+except ImportError:
+    # db_helper가 없을 경우 직접 정의
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    USE_POSTGRESQL = DATABASE_URL is not None
+    
+    if not USE_POSTGRESQL:
+        volume_path = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH', '/app/data')
+        DB_DIR = Path(volume_path)
+        DB_DIR.mkdir(parents=True, exist_ok=True)
+        DB_PATH = DB_DIR / "licenses.db"
+    
+    def get_db_connection():
+        if USE_POSTGRESQL:
+            return psycopg2.connect(DATABASE_URL)
+        else:
+            return sqlite3.connect(DB_PATH)
 import urllib.parse
 
 # 템플릿 폴더 경로 (현재 파일 기준)
