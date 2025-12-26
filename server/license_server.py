@@ -66,52 +66,94 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 라이선스 테이블
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS licenses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            license_key TEXT UNIQUE NOT NULL,
-            customer_name TEXT,
-            customer_email TEXT,
-            hardware_id TEXT,
-            created_date TEXT NOT NULL,
-            expiry_date TEXT NOT NULL,
-            is_active INTEGER DEFAULT 1,
-            subscription_type TEXT DEFAULT 'monthly',
-            last_verified TEXT
-        )
-    """)
-    
-    # 구독 기록 테이블
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS subscriptions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            license_key TEXT NOT NULL,
-            payment_date TEXT NOT NULL,
-            amount REAL NOT NULL,
-            period_days INTEGER NOT NULL,
-            FOREIGN KEY (license_key) REFERENCES licenses(license_key)
-        )
-    """)
-    
-    # 사용 통계 테이블
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS usage_stats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            license_key TEXT NOT NULL,
-            usage_date TEXT NOT NULL,
-            total_invoices INTEGER NOT NULL DEFAULT 0,
-            success_count INTEGER NOT NULL DEFAULT 0,
-            fail_count INTEGER NOT NULL DEFAULT 0,
-            FOREIGN KEY (license_key) REFERENCES licenses(license_key)
-        )
-    """)
-    
-    # 인덱스 생성 (조회 성능 향상)
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_usage_stats_license_date 
-        ON usage_stats(license_key, usage_date)
-    """)
+    if USE_POSTGRESQL:
+        # PostgreSQL 테이블 생성
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS licenses (
+                id SERIAL PRIMARY KEY,
+                license_key VARCHAR(255) UNIQUE NOT NULL,
+                customer_name VARCHAR(255),
+                customer_email VARCHAR(255),
+                hardware_id VARCHAR(255),
+                created_date TIMESTAMP NOT NULL,
+                expiry_date TIMESTAMP NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                subscription_type VARCHAR(50) DEFAULT 'monthly',
+                last_verified TIMESTAMP
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                id SERIAL PRIMARY KEY,
+                license_key VARCHAR(255) NOT NULL,
+                payment_date TIMESTAMP NOT NULL,
+                amount DECIMAL(10, 2) NOT NULL,
+                period_days INTEGER NOT NULL,
+                FOREIGN KEY (license_key) REFERENCES licenses(license_key)
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS usage_stats (
+                id SERIAL PRIMARY KEY,
+                license_key VARCHAR(255) NOT NULL,
+                usage_date TIMESTAMP NOT NULL,
+                total_invoices INTEGER NOT NULL DEFAULT 0,
+                success_count INTEGER NOT NULL DEFAULT 0,
+                fail_count INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (license_key) REFERENCES licenses(license_key)
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_usage_stats_license_date 
+            ON usage_stats(license_key, usage_date)
+        """)
+    else:
+        # SQLite 테이블 생성
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS licenses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                license_key TEXT UNIQUE NOT NULL,
+                customer_name TEXT,
+                customer_email TEXT,
+                hardware_id TEXT,
+                created_date TEXT NOT NULL,
+                expiry_date TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                subscription_type TEXT DEFAULT 'monthly',
+                last_verified TEXT
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                license_key TEXT NOT NULL,
+                payment_date TEXT NOT NULL,
+                amount REAL NOT NULL,
+                period_days INTEGER NOT NULL,
+                FOREIGN KEY (license_key) REFERENCES licenses(license_key)
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS usage_stats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                license_key TEXT NOT NULL,
+                usage_date TEXT NOT NULL,
+                total_invoices INTEGER NOT NULL DEFAULT 0,
+                success_count INTEGER NOT NULL DEFAULT 0,
+                fail_count INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (license_key) REFERENCES licenses(license_key)
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_usage_stats_license_date 
+            ON usage_stats(license_key, usage_date)
+        """)
     
     conn.commit()
     conn.close()
@@ -602,21 +644,23 @@ def get_stats():
     cursor.execute("SELECT COUNT(*) FROM licenses")
     total_licenses = cursor.fetchone()[0]
     
-    # 활성 라이선스 수
+    # 활성 라이선스 수 (만료일이 미래이고 활성화된 것)
     now = datetime.datetime.now()
     if USE_POSTGRESQL:
+        # PostgreSQL: expiry_date는 TIMESTAMP 타입
         cursor.execute("""
             SELECT COUNT(*) FROM licenses 
             WHERE expiry_date > %s AND is_active = TRUE
         """, (now,))
     else:
+        # SQLite: expiry_date는 TEXT(ISO 문자열)
         cursor.execute("""
             SELECT COUNT(*) FROM licenses 
             WHERE expiry_date > ? AND is_active = 1
         """, (now.isoformat(),))
     active_licenses = cursor.fetchone()[0]
     
-    # 만료된 라이선스 수
+    # 만료된 라이선스 수 (만료일이 지났거나 비활성화된 것)
     if USE_POSTGRESQL:
         cursor.execute("""
             SELECT COUNT(*) FROM licenses 
@@ -630,10 +674,33 @@ def get_stats():
     expired_licenses = cursor.fetchone()[0]
     
     # 총 수익
-    cursor.execute("SELECT SUM(amount) FROM subscriptions")
+    cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM subscriptions")
     total_revenue = cursor.fetchone()[0] or 0
     
+    # 디버깅: 실제 데이터 확인
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT license_key, expiry_date, is_active, created_date 
+            FROM licenses 
+            ORDER BY created_date DESC 
+            LIMIT 5
+        """)
+    else:
+        cursor.execute("""
+            SELECT license_key, expiry_date, is_active, created_date 
+            FROM licenses 
+            ORDER BY created_date DESC 
+            LIMIT 5
+        """)
+    debug_data = cursor.fetchall()
+    
     conn.close()
+    
+    # 디버깅 로그 (개발 환경에서만)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Stats Debug - Total: {total_licenses}, Active: {active_licenses}, Expired: {expired_licenses}, Now: {now}")
+    logger.info(f"Debug Data: {debug_data}")
     
     return jsonify({
         'success': True,
