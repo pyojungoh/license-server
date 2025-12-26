@@ -561,6 +561,36 @@
             loadDashboard();
         });
         
+        // 라이선스 활성화/비활성화 토글
+        async function toggleLicense(licenseKey) {
+            if (!confirm(`라이선스를 ${licenseKey} ${document.querySelector(`button[onclick*="${licenseKey}"]`).textContent === '중지' ? '중지' : '활성화'}하시겠습니까?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/api/toggle_license`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        admin_key: ADMIN_KEY,
+                        license_key: licenseKey
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert(result.message, 'success');
+                    // 목록 새로고침
+                    loadLicenseList();
+                } else {
+                    showAlert(result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+        
         // 라이선스 목록 로드
         async function loadLicenseList() {
             try {
@@ -580,16 +610,25 @@
                         return;
                     }
                     
-                    let html = '<table><thead><tr><th>라이선스 키</th><th>고객명</th><th>이메일</th><th>만료일</th><th>상태</th><th>구독 유형</th><th>실행 횟수</th><th>총 송장 수</th><th>마지막 사용</th></tr></thead><tbody>';
+                    let html = '<table><thead><tr><th>라이선스 키</th><th>고객명</th><th>이메일</th><th>만료일</th><th>상태</th><th>구독 유형</th><th>실행 횟수</th><th>총 송장 수</th><th>마지막 사용</th><th>작업</th></tr></thead><tbody>';
                     
                     result.licenses.forEach(license => {
                         const expiryDate = new Date(license.expiry_date);
                         const isExpired = expiryDate < new Date();
-                        const statusBadge = isExpired ? 
-                            '<span class="badge badge-expired">만료</span>' : 
-                            '<span class="badge badge-active">활성</span>';
+                        const isActive = license.is_active !== false; // 기본값은 true
+                        
+                        let statusBadge;
+                        if (!isActive) {
+                            statusBadge = '<span class="badge badge-warning">중지됨</span>';
+                        } else if (isExpired) {
+                            statusBadge = '<span class="badge badge-expired">만료</span>';
+                        } else {
+                            statusBadge = '<span class="badge badge-active">활성</span>';
+                        }
                         
                         const lastUsage = license.last_usage ? new Date(license.last_usage).toLocaleString('ko-KR') : '-';
+                        const toggleButtonText = isActive ? '중지' : '활성화';
+                        const toggleButtonClass = isActive ? 'secondary' : '';
                         
                         html += `
                             <tr>
@@ -602,6 +641,11 @@
                                 <td>${license.run_count || 0}회</td>
                                 <td>${license.total_invoices || 0}건</td>
                                 <td>${lastUsage}</td>
+                                <td>
+                                    <button onclick="toggleLicense('${license.license_key}')" class="${toggleButtonClass}" style="padding: 6px 12px; font-size: 14px;">
+                                        ${toggleButtonText}
+                                    </button>
+                                </td>
                             </tr>
                         `;
                     });

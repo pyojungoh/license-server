@@ -858,10 +858,10 @@ def list_licenses():
                     'customer_email': row[2] or '',
                     'expiry_date': row[3] or '',
                     'subscription_type': row[4] or '',
-                    'is_active': bool(row[5]),
+                    'is_active': bool(row[5] if len(row) > 5 else True),  # 기본값 True
                     'is_expired': is_expired,
-                    'last_verified': row[6] or '',
-                    'created_date': row[7] or '',
+                    'last_verified': row[6] or '' if len(row) > 6 else '',
+                    'created_date': row[7] or '' if len(row) > 7 else '',
                     'run_count': run_count,
                     'total_invoices': total_invoices,
                     'last_usage': last_usage_str
@@ -878,6 +878,80 @@ def list_licenses():
         return jsonify({
             'success': False,
             'message': f'라이선스 목록 조회 실패: {str(e)}'
+        }), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@app.route('/api/toggle_license', methods=['POST'])
+def toggle_license():
+    """라이선스 활성화/비활성화 토글 (관리자용)"""
+    conn = None
+    cursor = None
+    try:
+        if not request.is_json:
+            return jsonify({'success': False, 'message': 'Content-Type이 application/json이어야 합니다.'}), 400
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': '요청 데이터가 없습니다.'}), 400
+        
+        admin_key = data.get('admin_key', '')
+        license_key = data.get('license_key', '').upper()
+        
+        if admin_key != ADMIN_KEY:
+            return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+        
+        if not license_key:
+            return jsonify({'success': False, 'message': '라이선스 키가 필요합니다.'}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 현재 상태 확인
+        if USE_POSTGRESQL:
+            cursor.execute("SELECT is_active FROM licenses WHERE license_key = %s", (license_key,))
+        else:
+            cursor.execute("SELECT is_active FROM licenses WHERE license_key = ?", (license_key,))
+        
+        result = cursor.fetchone()
+        if not result:
+            return jsonify({'success': False, 'message': '라이선스를 찾을 수 없습니다.'}), 404
+        
+        current_status = result[0] if not USE_POSTGRESQL else result['is_active']
+        new_status = not bool(current_status)
+        
+        # 상태 업데이트
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                UPDATE licenses 
+                SET is_active = %s 
+                WHERE license_key = %s
+            """, (new_status, license_key))
+        else:
+            cursor.execute("""
+                UPDATE licenses 
+                SET is_active = ? 
+                WHERE license_key = ?
+            """, (1 if new_status else 0, license_key))
+        
+        conn.commit()
+        
+        action = '활성화' if new_status else '중지'
+        return jsonify({
+            'success': True,
+            'message': f'라이선스가 {action}되었습니다.',
+            'is_active': new_status
+        })
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"라이선스 토글 중 오류: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': f'라이선스 상태 변경 실패: {str(e)}'
         }), 500
     finally:
         if cursor:
