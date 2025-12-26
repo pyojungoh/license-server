@@ -182,8 +182,16 @@ def init_db():
             ON usage_stats(license_key, usage_date)
         """)
     
-    conn.commit()
-    conn.close()
+        conn.commit()
+        logger.info("✓ 데이터베이스 테이블 생성 완료")
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"✗ 데이터베이스 초기화 실패: {e}")
+        raise
+    finally:
+        if conn:
+            conn.close()
 
 def generate_license_key() -> str:
     """라이선스 키 생성"""
@@ -382,32 +390,58 @@ def create_license():
     license_key = generate_license_key()
     expiry_date = datetime.datetime.now() + datetime.timedelta(days=period_days)
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    now = datetime.datetime.now()
-    if USE_POSTGRESQL:
-        cursor.execute("""
-            INSERT INTO licenses (license_key, customer_name, customer_email, 
-                               created_date, expiry_date, subscription_type)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (license_key, customer_name, customer_email, now, expiry_date, subscription_type))
-    else:
-        cursor.execute("""
-            INSERT INTO licenses (license_key, customer_name, customer_email, 
-                               created_date, expiry_date, subscription_type)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (license_key, customer_name, customer_email, 
-              now.isoformat(), expiry_date.isoformat(), subscription_type))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({
-        'success': True,
-        'license_key': license_key,
-        'expiry_date': expiry_date.isoformat()
-    })
+    conn = None
+    try:
+        conn = get_db_connection()
+        # PostgreSQL은 autocommit이 꺼져있으므로 명시적으로 설정
+        if USE_POSTGRESQL:
+            conn.autocommit = False
+        
+        cursor = conn.cursor()
+        
+        now = datetime.datetime.now()
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                INSERT INTO licenses (license_key, customer_name, customer_email, 
+                                   created_date, expiry_date, subscription_type)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (license_key, customer_name, customer_email, now, expiry_date, subscription_type))
+        else:
+            cursor.execute("""
+                INSERT INTO licenses (license_key, customer_name, customer_email, 
+                                   created_date, expiry_date, subscription_type)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (license_key, customer_name, customer_email, 
+                  now.isoformat(), expiry_date.isoformat(), subscription_type))
+        
+        # 커밋 확인
+        conn.commit()
+        
+        # 커밋 후 데이터 확인 (디버깅)
+        cursor.execute("SELECT COUNT(*) FROM licenses WHERE license_key = %s" if USE_POSTGRESQL else "SELECT COUNT(*) FROM licenses WHERE license_key = ?", 
+                      (license_key,))
+        count = cursor.fetchone()[0]
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"라이선스 생성 완료: {license_key}, DB에 저장 확인: {count}개")
+        
+        return jsonify({
+            'success': True,
+            'license_key': license_key,
+            'expiry_date': expiry_date.isoformat()
+        })
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        import logging
+        import traceback
+        logger = logging.getLogger(__name__)
+        logger.error(f"라이선스 생성 실패: {e}\n{traceback.format_exc()}")
+        return jsonify({'success': False, 'message': f'라이선스 생성 실패: {str(e)}'}), 500
+    finally:
+        if conn:
+            conn.close()
 
 @app.route('/api/extend_license', methods=['POST'])
 def extend_license():
@@ -450,32 +484,44 @@ def extend_license():
         # 아직 유효한 경우 기존 만료일부터 연장
         new_expiry = current_expiry + datetime.timedelta(days=period_days)
     
-    now = datetime.datetime.now()
-    if USE_POSTGRESQL:
-        cursor.execute("""
-            UPDATE licenses 
-            SET expiry_date = %s
-            WHERE license_key = %s
-        """, (new_expiry, license_key))
+    try:
+        now = datetime.datetime.now()
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                UPDATE licenses 
+                SET expiry_date = %s
+                WHERE license_key = %s
+            """, (new_expiry, license_key))
+            
+            cursor.execute("""
+                INSERT INTO subscriptions (license_key, payment_date, amount, period_days)
+                VALUES (%s, %s, %s, %s)
+            """, (license_key, now, amount, period_days))
+        else:
+            cursor.execute("""
+                UPDATE licenses 
+                SET expiry_date = ?
+                WHERE license_key = ?
+            """, (new_expiry.isoformat(), license_key))
+            
+            cursor.execute("""
+                INSERT INTO subscriptions (license_key, payment_date, amount, period_days)
+                VALUES (?, ?, ?, ?)
+            """, (license_key, now.isoformat(), amount, period_days))
         
-        cursor.execute("""
-            INSERT INTO subscriptions (license_key, payment_date, amount, period_days)
-            VALUES (%s, %s, %s, %s)
-        """, (license_key, now, amount, period_days))
-    else:
-        cursor.execute("""
-            UPDATE licenses 
-            SET expiry_date = ?
-            WHERE license_key = ?
-        """, (new_expiry.isoformat(), license_key))
+        conn.commit()
         
-        cursor.execute("""
-            INSERT INTO subscriptions (license_key, payment_date, amount, period_days)
-            VALUES (?, ?, ?, ?)
-        """, (license_key, now.isoformat(), amount, period_days))
-    
-    conn.commit()
-    conn.close()
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"라이선스 연장 완료: {license_key}, 새 만료일: {new_expiry}")
+    except Exception as e:
+        conn.rollback()
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"라이선스 연장 실패: {e}")
+        return jsonify({'success': False, 'message': f'라이선스 연장 실패: {str(e)}'}), 500
+    finally:
+        conn.close()
     
     return jsonify({
         'success': True,
