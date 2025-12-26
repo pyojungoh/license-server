@@ -15,24 +15,6 @@ from pathlib import Path
 import json
 import os
 
-# 데이터베이스 연결 설정
-DATABASE_URL = os.environ.get('DATABASE_URL')
-USE_POSTGRESQL = DATABASE_URL is not None
-
-if not USE_POSTGRESQL:
-    # 로컬 개발용 SQLite
-    volume_path = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH', '/app/data')
-    DB_DIR = Path(volume_path)
-    DB_DIR.mkdir(parents=True, exist_ok=True)
-    DB_PATH = DB_DIR / "licenses.db"
-
-def get_db_connection():
-    """데이터베이스 연결 반환"""
-    if USE_POSTGRESQL:
-        return psycopg2.connect(DATABASE_URL)
-    else:
-        return sqlite3.connect(DB_PATH)
-
 # 템플릿 폴더 경로 (현재 파일 기준)
 template_dir = Path(__file__).parent / 'templates'
 app = Flask(__name__, template_folder=str(template_dir))
@@ -44,8 +26,8 @@ ADMIN_KEY = os.environ.get('ADMIN_KEY', '2133781qQ!!@#')
 # 데이터베이스 연결 설정
 # Railway PostgreSQL 사용 (DATABASE_URL 환경변수)
 # 없으면 로컬 SQLite 사용
-DATABASE_URL = os.environ.get('DATABASE_URL')
-USE_POSTGRESQL = DATABASE_URL is not None
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
+USE_POSTGRESQL = bool(DATABASE_URL and DATABASE_URL.startswith('postgres'))
 
 if not USE_POSTGRESQL:
     # 로컬 개발용 SQLite
@@ -598,7 +580,9 @@ def health_check():
             'connected': True,
             'table_exists': table_exists,
             'license_count': license_count,
-            'database_url_set': USE_POSTGRESQL
+            'database_url_set': USE_POSTGRESQL,
+            'database_url_present': bool(DATABASE_URL),
+            'database_url_preview': DATABASE_URL[:50] + '...' if DATABASE_URL and len(DATABASE_URL) > 50 else DATABASE_URL
         })
     except Exception as e:
         import traceback
