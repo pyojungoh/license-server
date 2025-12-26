@@ -48,6 +48,13 @@ def init_db():
     import logging
     logger = logging.getLogger(__name__)
     
+    # PostgreSQL 연결 확인
+    if USE_POSTGRESQL:
+        if not DATABASE_URL:
+            logger.error("USE_POSTGRESQL이 True인데 DATABASE_URL이 없습니다!")
+            raise ValueError("DATABASE_URL이 설정되지 않았습니다")
+        logger.info(f"PostgreSQL 연결 시도: {DATABASE_URL[:30]}...")
+    
     conn = None
     try:
         conn = get_db_connection()
@@ -59,7 +66,7 @@ def init_db():
             if USE_POSTGRESQL:
                 cursor.execute("""
                     SELECT COUNT(*) FROM information_schema.tables 
-                    WHERE table_name = 'licenses'
+                    WHERE table_schema = 'public' AND table_name = 'licenses'
                 """)
             else:
                 cursor.execute("""
@@ -75,9 +82,12 @@ def init_db():
                 logger.info(f"✓ 기존 테이블 발견: {existing_count}개의 라이선스가 있습니다. 데이터를 보존합니다.")
                 conn.close()
                 return  # 테이블이 이미 있으면 생성하지 않음
+            else:
+                logger.info("테이블이 없습니다. 새로 생성합니다.")
         except Exception as e:
-            # 테이블이 없으면 생성
-            logger.info(f"테이블이 없습니다. 새로 생성합니다: {e}")
+            # 연결은 성공했지만 쿼리 실패
+            logger.warning(f"테이블 확인 중 오류 (테이블 생성 시도): {e}")
+            # 테이블이 없을 수 있으므로 생성 시도
         
         # 테이블 생성
         if USE_POSTGRESQL:
