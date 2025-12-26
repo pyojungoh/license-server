@@ -1,0 +1,10 @@
+pyserial>=3.5
+openpyxl>=3.1.0
+colorama>=0.4.6
+pyserial-tools>=0.1
+pyinstaller>=5.0.0
+flask>=2.0.0
+flask-cors>=3.0.0
+requests>=2.28.0
+
+

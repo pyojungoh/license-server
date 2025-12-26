@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# 데이터베이스
+*.db
+*.sqlite
+*.sqlite3
+server/licenses.db
+server/server/licenses.db
+
+# 설정 파일
+config/license.json
+.env
+*.env
+
+# 로그
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 빌드
+dist/
+build/
+*.egg-info/
+
+# 임시 파일
+*.tmp
+*.bak
