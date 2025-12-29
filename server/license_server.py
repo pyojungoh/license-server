@@ -776,6 +776,16 @@ def index():
     """웹 관리자 페이지"""
     return render_template('index.html')
 
+@app.route('/test')
+def test_page():
+    """한진택배 앱 테스트 페이지"""
+    # 템플릿 폴더에 있는 파일이 아니므로 직접 파일을 읽어서 반환
+    test_file_path = Path(__file__).parent.parent / 'test_hanjin_app.html'
+    if test_file_path.exists():
+        return test_file_path.read_text(encoding='utf-8')
+    else:
+        return "Test page not found", 404
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """데이터베이스 연결 상태 확인"""
