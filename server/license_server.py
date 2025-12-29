@@ -1479,12 +1479,15 @@ def user_login():
             name = user_data.get('name')
             email = user_data.get('email')
         else:
-            # SQLite: 튜플 인덱싱 (컬럼 순서: user_id, password_hash, name, email, phone, created_date, last_login, expiry_date, subscription_type, is_active)
+            # SQLite: 튜플 인덱싱 (컬럼 순서: id, user_id, password_hash, name, email, phone, hardware_id, created_date, last_login, is_active)
             try:
-                password_hash = user_data[1] if len(user_data) > 1 else None  # password_hash 컬럼
-                name = user_data[2] if len(user_data) > 2 else None  # name 컬럼
-                email = user_data[3] if len(user_data) > 3 else None  # email 컬럼
-                is_active = bool(user_data[9] if len(user_data) > 9 else True)  # is_active 컬럼
+                if len(user_data) < 10:
+                    conn.close()
+                    return jsonify({'success': False, 'message': '사용자 데이터가 불완전합니다.'}), 500
+                password_hash = user_data[2]  # password_hash 컬럼 (인덱스 2)
+                name = user_data[3]  # name 컬럼 (인덱스 3)
+                email = user_data[4]  # email 컬럼 (인덱스 4)
+                is_active = bool(user_data[9])  # is_active 컬럼 (인덱스 9)
             except (IndexError, TypeError) as e:
                 conn.close()
                 return jsonify({'success': False, 'message': f'사용자 데이터 오류: {str(e)}'}), 500
