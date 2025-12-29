@@ -2201,6 +2201,7 @@ def list_users():
     users = []
     for row in cursor.fetchall():
         if USE_POSTGRESQL:
+            user_id = row.get('user_id')
             expiry_date_val = row.get('expiry_date')
             if expiry_date_val:
                 if isinstance(expiry_date_val, str):
@@ -2210,27 +2211,70 @@ def list_users():
             else:
                 expiry_date = None
             
+            # 사용자 통계 정보 조회 (작업 횟수, 총 송장 건수)
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as work_count,
+                    SUM(total_invoices) as total_invoices,
+                    SUM(success_count) as total_success,
+                    SUM(fail_count) as total_fail
+                FROM user_usage
+                WHERE user_id = %s
+            """, (user_id,))
+            stats = cursor.fetchone()
+            
+            work_count = stats.get('work_count') or 0 if stats else 0
+            total_invoices = stats.get('total_invoices') or 0 if stats else 0
+            total_success = stats.get('total_success') or 0 if stats else 0
+            total_fail = stats.get('total_fail') or 0 if stats else 0
+            
             users.append({
-                'user_id': row.get('user_id'),
+                'user_id': user_id,
                 'name': row.get('name'),
                 'email': row.get('email'),
                 'is_active': bool(row.get('is_active')),
                 'created_date': row.get('created_date').isoformat() if row.get('created_date') and hasattr(row.get('created_date'), 'isoformat') else (row.get('created_date') or ''),
                 'last_login': row.get('last_login').isoformat() if row.get('last_login') and hasattr(row.get('last_login'), 'isoformat') else (row.get('last_login') or ''),
-                'expiry_date': expiry_date
+                'expiry_date': expiry_date,
+                'work_count': work_count,
+                'total_invoices': total_invoices,
+                'total_success': total_success,
+                'total_fail': total_fail
             })
         else:
+            user_id = row[0]
             expiry_date_val = row[6] if len(row) > 6 else None
             expiry_date = expiry_date_val if expiry_date_val else None
             
+            # 사용자 통계 정보 조회 (작업 횟수, 총 송장 건수)
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as work_count,
+                    SUM(total_invoices) as total_invoices,
+                    SUM(success_count) as total_success,
+                    SUM(fail_count) as total_fail
+                FROM user_usage
+                WHERE user_id = ?
+            """, (user_id,))
+            stats = cursor.fetchone()
+            
+            work_count = stats[0] or 0 if stats else 0
+            total_invoices = stats[1] or 0 if stats else 0
+            total_success = stats[2] or 0 if stats else 0
+            total_fail = stats[3] or 0 if stats else 0
+            
             users.append({
-                'user_id': row[0],
+                'user_id': user_id,
                 'name': row[1],
                 'email': row[2],
                 'is_active': bool(row[3]),
                 'created_date': row[4] or '',
                 'last_login': row[5] or '',
-                'expiry_date': expiry_date
+                'expiry_date': expiry_date,
+                'work_count': work_count,
+                'total_invoices': total_invoices,
+                'total_success': total_success,
+                'total_fail': total_fail
             })
     
     conn.close()
