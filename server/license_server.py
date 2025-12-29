@@ -1479,57 +1479,86 @@ def verify_mac_address():
 @app.route('/api/create_user', methods=['POST'])
 def create_user():
     """사용자 생성 (관리자용)"""
-    data = request.json
-    admin_key = data.get('admin_key', '')
+    import logging
+    logger = logging.getLogger(__name__)
     
-    if admin_key != ADMIN_KEY:
-        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
-    
-    user_id = data.get('user_id', '').strip()
-    password = data.get('password', '')
-    name = data.get('name', '').strip()
-    email = data.get('email', '').strip()
-    phone = data.get('phone', '').strip()
-    
-    if not user_id or not password or not name:
-        return jsonify({'success': False, 'message': '아이디, 비밀번호, 이름이 필요합니다.'}), 400
-    
-    # 비밀번호 해싱
-    password_hash = hash_password(password)
-    
-    conn = get_db_connection()
-    if USE_POSTGRESQL:
-        cursor = conn.cursor()
-    else:
-        cursor = conn.cursor()
-    
-    now = datetime.datetime.now()
     try:
-        if USE_POSTGRESQL:
-            cursor.execute("""
-                INSERT INTO users (user_id, password_hash, name, email, phone, created_date)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (user_id, password_hash, name, email, phone, now))
-        else:
-            cursor.execute("""
-                INSERT INTO users (user_id, password_hash, name, email, phone, created_date)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (user_id, password_hash, name, email, phone, now.isoformat()))
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'message': '요청 데이터가 없습니다.'}), 400
+            
+        admin_key = data.get('admin_key', '')
         
-        conn.commit()
-        conn.close()
+        if admin_key != ADMIN_KEY:
+            logger.warning(f"권한 없음: admin_key={admin_key[:10]}...")
+            return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
         
-        return jsonify({
-            'success': True,
-            'message': '사용자 계정이 생성되었습니다.',
-            'user_id': user_id
-        })
+        user_id = data.get('user_id', '').strip()
+        password = data.get('password', '')
+        name = data.get('name', '').strip()
+        email = data.get('email', '').strip()
+        phone = data.get('phone', '').strip()
+        
+        if not user_id or not password or not name:
+            return jsonify({'success': False, 'message': '아이디, 비밀번호, 이름이 필요합니다.'}), 400
+        
+        # 비밀번호 해싱
+        try:
+            password_hash = hash_password(password)
+        except Exception as e:
+            logger.error(f"비밀번호 해싱 실패: {e}")
+            return jsonify({'success': False, 'message': f'비밀번호 처리 실패: {str(e)}'}), 500
+        
+        conn = None
+        try:
+            conn = get_db_connection()
+            if USE_POSTGRESQL:
+                cursor = conn.cursor()
+            else:
+                cursor = conn.cursor()
+            
+            now = datetime.datetime.now()
+            try:
+                if USE_POSTGRESQL:
+                    cursor.execute("""
+                        INSERT INTO users (user_id, password_hash, name, email, phone, created_date)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (user_id, password_hash, name, email, phone, now))
+                else:
+                    cursor.execute("""
+                        INSERT INTO users (user_id, password_hash, name, email, phone, created_date)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (user_id, password_hash, name, email, phone, now.isoformat()))
+                
+                conn.commit()
+                logger.info(f"사용자 생성 성공: {user_id}")
+                
+                return jsonify({
+                    'success': True,
+                    'message': '사용자 계정이 생성되었습니다.',
+                    'user_id': user_id
+                })
+            except Exception as e:
+                if conn:
+                    conn.rollback()
+                error_msg = str(e)
+                logger.error(f"사용자 생성 실패: {error_msg}")
+                
+                if 'UNIQUE constraint' in error_msg or 'duplicate key' in error_msg.lower() or 'unique constraint' in error_msg.lower():
+                    return jsonify({'success': False, 'message': '이미 존재하는 사용자 ID입니다.'}), 400
+                elif 'does not exist' in error_msg.lower() or 'no such table' in error_msg.lower():
+                    return jsonify({'success': False, 'message': '데이터베이스 테이블이 없습니다. 서버 관리자에게 문의하세요.'}), 500
+                else:
+                    return jsonify({'success': False, 'message': f'사용자 생성 실패: {error_msg}'}), 500
+            finally:
+                if conn:
+                    conn.close()
+        except Exception as e:
+            logger.error(f"데이터베이스 연결 실패: {e}")
+            return jsonify({'success': False, 'message': f'데이터베이스 연결 실패: {str(e)}'}), 500
     except Exception as e:
-        conn.rollback()
-        conn.close()
-        if 'UNIQUE constraint' in str(e) or 'duplicate key' in str(e).lower():
-            return jsonify({'success': False, 'message': '이미 존재하는 사용자 ID입니다.'}), 400
-        return jsonify({'success': False, 'message': f'사용자 생성 실패: {str(e)}'}), 500
+        logger.error(f"create_user 예외: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'서버 오류: {str(e)}'}), 500
 
 @app.route('/api/list_users', methods=['POST'])
 def list_users():
