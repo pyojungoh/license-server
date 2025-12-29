@@ -62,30 +62,53 @@ def init_db():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # 기존 데이터 확인
-        table_exists = False
+        # 기존 테이블 확인 (licenses 테이블 체크)
+        licenses_table_exists = False
+        users_table_exists = False
         try:
             if USE_POSTGRESQL:
                 cursor.execute("""
                     SELECT COUNT(*) FROM information_schema.tables 
                     WHERE table_schema = 'public' AND table_name = 'licenses'
                 """)
+                licenses_table_exists = cursor.fetchone()[0] > 0
+                
+                cursor.execute("""
+                    SELECT COUNT(*) FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = 'users'
+                """)
+                users_table_exists = cursor.fetchone()[0] > 0
             else:
                 cursor.execute("""
                     SELECT COUNT(*) FROM sqlite_master 
                     WHERE type='table' AND name='licenses'
                 """)
-            table_exists = cursor.fetchone()[0] > 0
+                licenses_table_exists = cursor.fetchone()[0] > 0
+                
+                cursor.execute("""
+                    SELECT COUNT(*) FROM sqlite_master 
+                    WHERE type='table' AND name='users'
+                """)
+                users_table_exists = cursor.fetchone()[0] > 0
             
-            if table_exists:
+            if licenses_table_exists:
                 # 기존 데이터 개수 확인
                 cursor.execute("SELECT COUNT(*) FROM licenses")
                 existing_count = cursor.fetchone()[0]
-                logger.info(f"✓ 기존 테이블 발견: {existing_count}개의 라이선스가 있습니다. 데이터를 보존합니다.")
+                logger.info(f"✓ 기존 licenses 테이블 발견: {existing_count}개의 라이선스가 있습니다.")
+            
+            if users_table_exists:
+                cursor.execute("SELECT COUNT(*) FROM users")
+                user_count = cursor.fetchone()[0]
+                logger.info(f"✓ 기존 users 테이블 발견: {user_count}명의 사용자가 있습니다.")
+            
+            # licenses 테이블이 있고 users 테이블도 있으면 모든 테이블이 존재하는 것으로 간주
+            if licenses_table_exists and users_table_exists:
+                logger.info("기존 테이블이 모두 존재합니다. 데이터를 보존합니다.")
                 conn.close()
                 return  # 테이블이 이미 있으면 생성하지 않음
             else:
-                logger.info("테이블이 없습니다. 새로 생성합니다.")
+                logger.info("일부 테이블이 없습니다. 필요한 테이블을 생성합니다.")
         except Exception as e:
             # 연결은 성공했지만 쿼리 실패
             logger.warning(f"테이블 확인 중 오류 (테이블 생성 시도): {e}")
