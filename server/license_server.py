@@ -1663,47 +1663,47 @@ def user_login():
                     (user_id, device_uuid, access_token, token_hash, created_date, expires_at)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (user_id, device_uuid, access_token, token_hash, now.isoformat(), expires_at.isoformat()))
-        
-        # 구독 정보 조회
-        if USE_POSTGRESQL:
-            cursor.execute("""
-                SELECT expiry_date FROM user_subscriptions 
-                WHERE user_id = %s AND is_active = TRUE
-                ORDER BY expiry_date DESC LIMIT 1
-            """, (user_id,))
-        else:
-            cursor.execute("""
-                SELECT expiry_date FROM user_subscriptions 
-                WHERE user_id = ? AND is_active = 1
-                ORDER BY expiry_date DESC LIMIT 1
-            """, (user_id,))
-        
-        sub_data = cursor.fetchone()
-        expiry_date = None
-        if sub_data:
-            try:
-                if USE_POSTGRESQL:
-                    expiry_date_val = sub_data.get('expiry_date')
-                else:
-                    expiry_date_val = sub_data[0] if len(sub_data) > 0 else None
-                
-                if expiry_date_val:
-                    if isinstance(expiry_date_val, str):
-                        expiry_date = datetime.datetime.fromisoformat(expiry_date_val)
+            
+            # 구독 정보 조회
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    SELECT expiry_date FROM user_subscriptions 
+                    WHERE user_id = %s AND is_active = TRUE
+                    ORDER BY expiry_date DESC LIMIT 1
+                """, (user_id,))
+            else:
+                cursor.execute("""
+                    SELECT expiry_date FROM user_subscriptions 
+                    WHERE user_id = ? AND is_active = 1
+                    ORDER BY expiry_date DESC LIMIT 1
+                """, (user_id,))
+            
+            sub_data = cursor.fetchone()
+            expiry_date = None
+            if sub_data:
+                try:
+                    if USE_POSTGRESQL:
+                        expiry_date_val = sub_data.get('expiry_date')
                     else:
-                        expiry_date = expiry_date_val
-            except (IndexError, TypeError):
-                expiry_date = None
-        
-        # last_login 업데이트
-        if USE_POSTGRESQL:
-            cursor.execute("UPDATE users SET last_login = %s WHERE user_id = %s", (now, user_id))
-        else:
-            cursor.execute("UPDATE users SET last_login = ? WHERE user_id = ?", (now.isoformat(), user_id))
-        
-        conn.commit()
-        conn.close()
-        
+                        expiry_date_val = sub_data[0] if len(sub_data) > 0 else None
+                    
+                    if expiry_date_val:
+                        if isinstance(expiry_date_val, str):
+                            expiry_date = datetime.datetime.fromisoformat(expiry_date_val)
+                        else:
+                            expiry_date = expiry_date_val
+                except (IndexError, TypeError, ValueError):
+                    expiry_date = None
+            
+            # last_login 업데이트
+            if USE_POSTGRESQL:
+                cursor.execute("UPDATE users SET last_login = %s WHERE user_id = %s", (now, user_id))
+            else:
+                cursor.execute("UPDATE users SET last_login = ? WHERE user_id = ?", (now.isoformat(), user_id))
+            
+            conn.commit()
+            conn.close()
+            
             # 모바일 앱 로그인 응답 (토큰 포함)
             return jsonify({
                 'success': True,
