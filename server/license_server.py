@@ -1317,7 +1317,7 @@ def record_usage():
     })
 
 @app.route('/api/login', methods=['POST'])
-def login():
+def user_login():
     """사용자 로그인"""
     data = request.json
     user_id = data.get('user_id', '').strip()
