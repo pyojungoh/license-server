@@ -534,14 +534,9 @@ class HanjinAutomationApp:
             return True
             
         except Exception as e:
-            error_msg = f"MAC 주소 검증 중 오류가 발생했습니다:\n{e}"
-            try:
-                if registered_macs:
-                    error_msg += f"\n\n등록된 MAC 주소 목록:\n" + "\n".join([f"  - {mac}" for mac in registered_macs])
-            except:
-                pass
-            messagebox.showerror("오류", error_msg)
-            return False
+            self.log(f"⚠️ MAC 주소 검증 중 오류 발생: {e}")
+            self.log("MAC 주소 검증을 건너뛰고 계속 진행합니다.")
+            return True  # 오류 발생해도 계속 진행
     
     def check_bluetooth_status(self):
         """블루투스 상태 주기적 확인 (5초마다)"""
