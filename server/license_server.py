@@ -1653,6 +1653,129 @@ def user_login():
             'message': f'로그인 처리 중 오류가 발생했습니다: {error_msg}'
         }), 500
 
+@app.route('/api/list_user_devices', methods=['POST'])
+def list_user_devices():
+    """사용자의 등록된 기기 목록 조회 (관리자용)"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    user_id = data.get('user_id', '').strip()
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    if not user_id:
+        return jsonify({'success': False, 'message': '사용자 ID가 필요합니다.'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    try:
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                SELECT device_uuid, device_name, registered_date, last_used, is_active
+                FROM user_devices
+                WHERE user_id = %s
+                ORDER BY registered_date DESC
+            """, (user_id,))
+        else:
+            cursor.execute("""
+                SELECT device_uuid, device_name, registered_date, last_used, is_active
+                FROM user_devices
+                WHERE user_id = ?
+                ORDER BY registered_date DESC
+            """, (user_id,))
+        
+        devices = []
+        for row in cursor.fetchall():
+            if USE_POSTGRESQL:
+                devices.append({
+                    'device_uuid': row.get('device_uuid'),
+                    'device_name': row.get('device_name') or '',
+                    'registered_date': row.get('registered_date').isoformat() if row.get('registered_date') and hasattr(row.get('registered_date'), 'isoformat') else (row.get('registered_date') or ''),
+                    'last_used': row.get('last_used').isoformat() if row.get('last_used') and hasattr(row.get('last_used'), 'isoformat') else (row.get('last_used') or ''),
+                    'is_active': bool(row.get('is_active'))
+                })
+            else:
+                devices.append({
+                    'device_uuid': row[0],
+                    'device_name': row[1] or '',
+                    'registered_date': row[2] or '',
+                    'last_used': row[3] or '',
+                    'is_active': bool(row[4])
+                })
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'devices': devices
+        })
+    except Exception as e:
+        if conn:
+            conn.close()
+        return jsonify({
+            'success': False,
+            'message': f'기기 목록 조회 실패: {str(e)}'
+        }), 500
+
+@app.route('/api/remove_user_device', methods=['POST'])
+def remove_user_device():
+    """사용자의 등록된 기기 삭제 (관리자용)"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    user_id = data.get('user_id', '').strip()
+    device_uuid = data.get('device_uuid', '').strip()
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    if not user_id or not device_uuid:
+        return jsonify({'success': False, 'message': '사용자 ID와 기기 UUID가 필요합니다.'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor()
+    else:
+        cursor = conn.cursor()
+    
+    try:
+        # 기기 삭제 (연관된 토큰도 함께 삭제됨 - CASCADE)
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                DELETE FROM user_devices
+                WHERE user_id = %s AND device_uuid = %s
+            """, (user_id, device_uuid))
+        else:
+            cursor.execute("""
+                DELETE FROM user_devices
+                WHERE user_id = ? AND device_uuid = ?
+            """, (user_id, device_uuid))
+        
+        deleted_count = cursor.rowcount
+        
+        if deleted_count == 0:
+            conn.close()
+            return jsonify({'success': False, 'message': '해당 기기를 찾을 수 없습니다.'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': '기기가 삭제되었습니다.'
+        })
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        return jsonify({
+            'success': False,
+            'message': f'기기 삭제 실패: {str(e)}'
+        }), 500
+
 @app.route('/api/logout', methods=['POST'])
 def logout():
     """사용자 로그아웃"""

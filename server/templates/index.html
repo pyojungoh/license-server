@@ -394,6 +394,36 @@
             }
         });
         
+        // 기기 UUID 삭제
+        async function deleteUserDevice(userId, deviceUuid) {
+            if (!confirm(`정말로 이 기기를 삭제하시겠습니까?\n\n사용자: ${userId}\n기기 UUID: ${deviceUuid.substring(0, 8)}...\n\n기기를 삭제하면 해당 기기에서 로그인할 수 없게 됩니다.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/api/remove_user_device`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        admin_key: ADMIN_KEY,
+                        user_id: userId,
+                        device_uuid: deviceUuid
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert('기기가 삭제되었습니다.', 'success');
+                    loadUserList(); // 목록 새로고침
+                } else {
+                    showAlert(result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+        
         // MAC 주소 추가
         async function addMacAddress(userId) {
             const macAddress = prompt('MAC 주소를 입력하세요 (형식: AA:BB:CC:DD:EE:FF):');
@@ -601,7 +631,7 @@
                         return;
                     }
                     
-                    // 각 사용자의 MAC 주소 목록도 함께 가져오기
+                    // 각 사용자의 MAC 주소 및 기기 UUID 목록도 함께 가져오기
                     const usersWithMac = await Promise.all(result.users.map(async (user) => {
                         try {
                             const macResponse = await fetch(`${API_URL}/api/list_user_mac_addresses`, {
@@ -614,10 +644,27 @@
                         } catch (error) {
                             user.mac_addresses = [];
                         }
+                        
+                        // 기기 UUID 목록 가져오기
+                        try {
+                            const deviceResponse = await fetch(`${API_URL}/api/list_user_devices`, {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({
+                                    admin_key: ADMIN_KEY,
+                                    user_id: user.user_id
+                                })
+                            });
+                            const deviceResult = await deviceResponse.json();
+                            user.devices = deviceResult.success ? deviceResult.devices : [];
+                        } catch (error) {
+                            user.devices = [];
+                        }
+                        
                         return user;
                     }));
                     
-                    let html = '<table><thead><tr><th>사용자 ID</th><th>이름</th><th>이메일</th><th>만료일</th><th>상태</th><th>MAC 주소</th><th>생성일</th><th>마지막 로그인</th><th>작업</th></tr></thead><tbody>';
+                    let html = '<table><thead><tr><th>사용자 ID</th><th>이름</th><th>이메일</th><th>만료일</th><th>상태</th><th>등록된 기기</th><th>MAC 주소</th><th>생성일</th><th>마지막 로그인</th><th>작업</th></tr></thead><tbody>';
                     
                     usersWithMac.forEach(user => {
                         const expiryDate = user.expiry_date ? new Date(user.expiry_date) : null;
@@ -657,6 +704,28 @@
                         const createdDate = user.created_date ? new Date(user.created_date).toLocaleDateString('ko-KR') : '-';
                         const lastLogin = user.last_login ? new Date(user.last_login).toLocaleDateString('ko-KR') : '-';
                         
+                        // 등록된 기기(UUID) 목록 표시
+                        let deviceHtml = '';
+                        if (user.devices && user.devices.length > 0) {
+                            user.devices.forEach((device, index) => {
+                                const deviceName = device.device_name ? ` (${device.device_name})` : '';
+                                const activeBadge = device.is_active ? '<span class="badge badge-active" style="font-size: 10px; margin-left: 5px;">활성</span>' : '<span class="badge badge-warning" style="font-size: 10px; margin-left: 5px;">비활성</span>';
+                                const uuidShort = device.device_uuid.substring(0, 8) + '...';
+                                deviceHtml += `<div style="margin: 3px 0; font-size: 12px;">
+                                    <div style="display: flex; align-items: center; gap: 5px;">
+                                        <span title="${device.device_uuid}">${uuidShort}${deviceName}${activeBadge}</span>
+                                        <button onclick="deleteUserDevice('${user.user_id}', '${device.device_uuid}')" class="secondary" style="padding: 2px 8px; font-size: 11px;">삭제</button>
+                                    </div>
+                                    <div style="font-size: 10px; color: #666; margin-top: 2px;">
+                                        등록: ${device.registered_date ? new Date(device.registered_date).toLocaleDateString('ko-KR') : '-'} | 
+                                        최근: ${device.last_used ? new Date(device.last_used).toLocaleDateString('ko-KR') : '-'}
+                                    </div>
+                                </div>`;
+                            });
+                        } else {
+                            deviceHtml = '<span style="color: #999;">등록된 기기 없음</span>';
+                        }
+                        
                         // MAC 주소 목록 표시
                         let macHtml = '';
                         if (user.mac_addresses && user.mac_addresses.length > 0) {
@@ -679,6 +748,9 @@
                                 <td>${user.email || '-'}</td>
                                 <td>${expiryDisplay}</td>
                                 <td>${statusBadge}</td>
+                                <td style="max-width: 300px; font-size: 12px;">
+                                    ${deviceHtml}
+                                </td>
                                 <td style="max-width: 300px;">
                                     ${macHtml}
                                     <button onclick="addMacAddress('${user.user_id}')" class="secondary" style="padding: 4px 8px; font-size: 12px; margin-top: 5px;">

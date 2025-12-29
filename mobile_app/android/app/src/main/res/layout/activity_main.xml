@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ESP32 인증 시스템"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="32dp" />
+
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="대기 중..."
+        android:textSize="16sp"
+        android:padding="16dp"
+        android:background="@android:color/transparent"
+        android:layout_marginBottom="24dp"
+        android:gravity="center" />
+
+    <Button
+        android:id="@+id/btnScan"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="ESP32 장치 검색"
+        android:textSize="16sp"
+        android:padding="16dp"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/btnSendToken"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="토큰 전송"
+        android:textSize="16sp"
+        android:padding="16dp"
+        android:enabled="false" />
+
+</LinearLayout>
+
