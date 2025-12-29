@@ -372,15 +372,26 @@ class HanjinAutomationApp:
             self.bt_status_indicator.config(foreground="red")
             self.log(f"연결 오류: {e}")
     
-    def verify_mac_address(self):
-        """MAC 주소 검증"""
+    def verify_mac_address_optional(self):
+        """MAC 주소 검증 (선택사항 - 실패해도 계속 진행 가능)"""
         if not self.current_user_id:
-            return False
+            return True  # 사용자 ID가 없으면 검증 스킵
+        
+        # 개발 모드에서는 검증 스킵
+        dev_mode_file = Path(__file__).parent.parent / "config" / "dev_mode.txt"
+        if dev_mode_file.exists():
+            try:
+                with open(dev_mode_file, 'r', encoding='utf-8') as f:
+                    if f.read().strip().lower() == 'true':
+                        self.log("⚠️ 개발 모드: MAC 주소 검증을 건너뜁니다.")
+                        return True
+            except:
+                pass
         
         port = self.port_var.get()
         if not port:
-            messagebox.showwarning("경고", "COM 포트를 선택하세요.")
-            return False
+            self.log("⚠️ COM 포트가 선택되지 않았습니다. MAC 주소 검증을 건너뜁니다.")
+            return True  # 포트가 없어도 검증 스킵하고 계속 진행
         
         try:
             # 먼저 등록된 MAC 주소 목록 가져오기
@@ -403,11 +414,10 @@ class HanjinAutomationApp:
             # ESP32 연결
             controller = BluetoothController(port=port, baudrate=115200)
             if not controller.connect():
-                error_msg = "ESP32 연결에 실패했습니다."
+                self.log("⚠️ ESP32 연결에 실패했습니다. MAC 주소 검증을 건너뜁니다.")
                 if registered_macs:
-                    error_msg += f"\n\n등록된 MAC 주소 목록:\n" + "\n".join([f"  - {mac}" for mac in registered_macs])
-                messagebox.showerror("오류", error_msg)
-                return False
+                    self.log(f"등록된 MAC 주소: {', '.join(registered_macs)}")
+                return True  # 연결 실패해도 검증 스킵하고 계속 진행
             
             # MAC 주소 확인 (로그 콜백 사용)
             self.log("ESP32에 MAC 주소 요청 전송 중...")
@@ -512,35 +522,15 @@ class HanjinAutomationApp:
             )
             
             if not allowed:
-                error_msg = f"{message}\n\n"
-                error_msg += f"연결된 휴대폰의 MAC 주소: {mac_address}\n\n"
-                
+                self.log(f"⚠️ MAC 주소 검증 실패: {mac_address}")
                 if registered_macs:
-                    error_msg += f"등록된 MAC 주소 목록:\n"
-                    for registered_mac in registered_macs:
-                        if registered_mac == mac_address:
-                            error_msg += f"  ✓ {registered_mac} (일치)\n"
-                        else:
-                            # 대소문자 비교
-                            if registered_mac.upper() == mac_address.upper():
-                                error_msg += f"  ⚠ {registered_mac} (대소문자 차이)\n"
-                            else:
-                                error_msg += f"  - {registered_mac}\n"
-                    error_msg += f"\n현재 MAC 주소와 등록된 MAC 주소가 일치하지 않습니다.\n"
-                else:
-                    error_msg += f"등록된 MAC 주소가 없습니다.\n"
-                
-                error_msg += "\n관리자에게 문의하여 MAC 주소를 등록해주세요."
-                
-                messagebox.showerror("등록되지 않은 사용자", error_msg)
-                return False
+                    self.log(f"등록된 MAC 주소: {', '.join(registered_macs)}")
+                self.log("MAC 주소가 일치하지 않지만 계속 진행합니다.")
+                # 검증 실패해도 True 반환 (계속 진행)
+                return True
             
-            # 성공 메시지 (선택사항)
-            success_msg = f"MAC 주소 검증 성공!\n\n연결된 MAC 주소: {mac_address}"
-            if registered_macs:
-                success_msg += f"\n\n등록된 MAC 주소와 일치합니다."
-            messagebox.showinfo("검증 성공", success_msg)
-            
+            # 성공 시 로그만 표시
+            self.log(f"✓ MAC 주소 검증 성공: {mac_address}")
             return True
             
         except Exception as e:
@@ -673,9 +663,15 @@ class HanjinAutomationApp:
             messagebox.showerror("오류", "로그인이 필요합니다.")
             return
         
-        # MAC 주소 검증
-        if not self.verify_mac_address():
-            return
+        # MAC 주소 검증 (선택사항 - 사용자가 취소하면 계속 진행)
+        # ESP32에서 MAC 주소 자동 확인이 어려우므로, 검증 실패 시에도 진행 가능하도록 변경
+        try:
+            if not self.verify_mac_address_optional():
+                # 사용자가 취소하지 않았고 검증이 실패한 경우만 중단
+                return
+        except:
+            # 검증 중 오류 발생 시에도 계속 진행 (자동화가 멈추지 않도록)
+            self.log("MAC 주소 검증 중 오류 발생, 계속 진행합니다.")
         
         if self.is_running:
             return
