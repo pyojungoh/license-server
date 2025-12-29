@@ -1607,15 +1607,19 @@ def user_login():
         sub_data = cursor.fetchone()
         expiry_date = None
         if sub_data:
-            if USE_POSTGRESQL:
-                expiry_date_val = sub_data.get('expiry_date')
-            else:
-                expiry_date_val = sub_data[0]
-            
-            if isinstance(expiry_date_val, str):
-                expiry_date = datetime.datetime.fromisoformat(expiry_date_val)
-            else:
-                expiry_date = expiry_date_val
+            try:
+                if USE_POSTGRESQL:
+                    expiry_date_val = sub_data.get('expiry_date')
+                else:
+                    expiry_date_val = sub_data[0] if len(sub_data) > 0 else None
+                
+                if expiry_date_val:
+                    if isinstance(expiry_date_val, str):
+                        expiry_date = datetime.datetime.fromisoformat(expiry_date_val)
+                    else:
+                        expiry_date = expiry_date_val
+            except (IndexError, TypeError):
+                expiry_date = None
         
         # last_login 업데이트
         if USE_POSTGRESQL:
