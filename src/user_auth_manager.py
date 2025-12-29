@@ -303,24 +303,37 @@ class UserAuthManager:
                 timeout=10
             )
             
-            if response.status_code == 200:
+            # 응답 상태 코드에 따른 처리
+            try:
                 data = response.json()
+            except (ValueError, json.JSONDecodeError) as e:
+                logger.error(f"서버 응답 JSON 파싱 실패: {e}, 응답 내용: {response.text[:200]}")
+                return False, f"서버 응답을 처리할 수 없습니다. (상태 코드: {response.status_code})"
+            
+            if response.status_code == 200:
+                # 성공 응답
                 if data.get('success'):
                     logger.info(f"회원가입 성공: {user_id}")
                     return True, data.get('message', '회원가입이 완료되었습니다.')
                 else:
-                    return False, data.get('message', '회원가입 실패')
+                    error_msg = data.get('message', '회원가입 실패')
+                    logger.warning(f"회원가입 실패: {error_msg}")
+                    return False, error_msg
             else:
-                data = response.json()
-                return False, data.get('message', '서버 오류가 발생했습니다.')
+                # 오류 응답 (400, 500 등)
+                error_msg = data.get('message', f'서버 오류가 발생했습니다. (상태 코드: {response.status_code})')
+                logger.error(f"회원가입 실패 (상태 코드 {response.status_code}): {error_msg}")
+                return False, error_msg
                 
         except requests.exceptions.ConnectionError:
+            logger.error("서버 연결 실패")
             return False, "서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요."
         except requests.exceptions.Timeout:
+            logger.error("서버 응답 시간 초과")
             return False, "서버 응답 시간이 초과되었습니다."
         except Exception as e:
-            logger.error(f"회원가입 오류: {e}")
-            return False, f"오류가 발생했습니다: {str(e)}"
+            logger.error(f"회원가입 오류: {e}", exc_info=True)
+            return False, f"회원가입 처리 중 오류가 발생했습니다: {str(e)}"
     
     def record_usage(self, user_id: str, total_invoices: int, success_count: int, fail_count: int, 
                      mac_address: Optional[str] = None, hardware_id: Optional[str] = None) -> Tuple[bool, str]:
