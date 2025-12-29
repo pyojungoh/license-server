@@ -75,3 +75,7 @@ if __name__ == "__main__":
     hw_id = get_hardware_id()
     print(f"하드웨어 ID: {hw_id}")
 
+
+
+
+

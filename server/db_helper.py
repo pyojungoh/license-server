@@ -79,3 +79,7 @@ def get_row_dict(cursor, row):
     # SQLite는 튜플
     return row
 
+
+
+
+

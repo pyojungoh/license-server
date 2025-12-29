@@ -43,3 +43,9 @@ build/
 # 임시 파일
 *.tmp
 *.bak
+
+# 설치 파일 (큰 파일)
+installer/
+설치파일/
+*.exe
+*.zip

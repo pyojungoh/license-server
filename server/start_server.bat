@@ -6,3 +6,7 @@ cd /d %~dp0
 python license_server.py
 pause
 
+
+
+
+

@@ -90,3 +90,7 @@ railway run python -c "from license_server import init_db; init_db()"
   - 테이블 존재 여부
   - 라이선스 개수
 
+
+
+
+

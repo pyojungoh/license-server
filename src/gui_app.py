@@ -19,7 +19,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from bluetooth_controller import BluetoothController
 from excel_reader import ExcelReader
 from utils import setup_logging
-from online_license_manager import OnlineLicenseManager
+from user_auth_manager import UserAuthManager
+from hardware_id import get_hardware_id
 from colorama import init
 
 # colorama 초기화
@@ -44,12 +45,14 @@ class HanjinAutomationApp:
         # 설정 로드 (라이선스 서버 URL 필요)
         self.config = self.load_config()
         
-        # 온라인 라이선스 관리자 (서버 URL 설정 필요)
+        # 사용자 인증 관리자 (서버 URL 설정 필요)
         server_url = self.config.get("license_server", {}).get("url", "http://localhost:5000")
-        self.license_manager = OnlineLicenseManager(server_url=server_url)
+        self.user_auth_manager = UserAuthManager(server_url=server_url)
+        self.current_user_id = None
+        self.current_user_info = None
         
-        # 라이선스 확인
-        if not self.check_license():
+        # 로그인 화면 표시
+        if not self.show_login():
             return
         
         # GUI 생성
@@ -60,6 +63,14 @@ class HanjinAutomationApp:
         
         # 블루투스 상태 확인 (주기적)
         self.check_bluetooth_status()
+    
+    def log(self, message):
+        """로그 메시지 추가 (create_widgets 이후에 사용 가능)"""
+        if hasattr(self, 'log_text'):
+            timestamp = time.strftime("%H:%M:%S")
+            self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
+            self.log_text.see(tk.END)
+            self.root.update_idletasks()
     
     def load_config(self):
         """설정 파일 로드"""
@@ -88,87 +99,87 @@ class HanjinAutomationApp:
         except Exception as e:
             messagebox.showerror("오류", f"설정 저장 실패: {e}")
     
-    def check_license(self):
-        """라이선스 확인 (프로그램 시작 시 강제 온라인 검증)"""
-        # 개발 모드 확인
-        dev_mode_file = Path(__file__).parent.parent / "config" / "dev_mode.txt"
-        is_dev_mode = False
-        if dev_mode_file.exists():
-            try:
-                with open(dev_mode_file, 'r', encoding='utf-8') as f:
-                    is_dev_mode = f.read().strip().lower() == 'true'
-            except:
-                pass
+    def show_login(self):
+        """로그인 화면 표시"""
+        # 세션 확인 (자동 로그인)
+        session_data = self.user_auth_manager.session_data
+        if session_data:
+            user_id = session_data.get('user_id')
+            if user_id:
+                # 세션이 있으면 자동으로 사용자 정보 로드
+                user_info = self.user_auth_manager.get_user_info(user_id)
+                if user_info and user_info.get('is_active'):
+                    self.current_user_id = user_id
+                    self.current_user_info = user_info
+                    # MAC 주소 검증은 나중에 수행
+                    return True
         
-        if is_dev_mode:
-            # 개발 모드: 라이선스 검증 우회
-            self.log("⚠️ 개발 모드: 라이선스 검증을 우회합니다.")
-            return True
+        # 로그인 창 표시
+        login_window = tk.Toplevel(self.root)
+        login_window.title("로그인")
+        login_window.geometry("400x250")
+        login_window.resizable(False, False)
+        login_window.transient(self.root)
+        login_window.grab_set()
         
-        # 프로그램 시작 시 항상 온라인 검증 수행
-        valid, message = self.license_manager.verify_license(force_online=True)
-        if not valid:
-            # 라이선스 입력 창 표시
-            license_window = tk.Toplevel(self.root)
-            license_window.title("라이선스 등록")
-            license_window.geometry("500x350")
-            license_window.resizable(False, False)
-            license_window.transient(self.root)
-            license_window.grab_set()
-            
-            ttk.Label(license_window, text="라이선스 등록", font=("맑은 고딕", 14, "bold")).pack(pady=10)
-            ttk.Label(license_window, text=message, foreground="red", wraplength=450).pack(pady=5)
-            
-            ttk.Label(license_window, text="라이선스 키:").pack(pady=5)
-            license_key_var = tk.StringVar()
-            license_entry = ttk.Entry(license_window, textvariable=license_key_var, width=40)
-            license_entry.pack(pady=5)
-            
-            ttk.Label(license_window, text="고객명 (선택):").pack(pady=5)
-            customer_name_var = tk.StringVar()
-            customer_entry = ttk.Entry(license_window, textvariable=customer_name_var, width=40)
-            customer_entry.pack(pady=5)
-            
-            ttk.Label(license_window, text="이메일 (선택):").pack(pady=5)
-            customer_email_var = tk.StringVar()
-            email_entry = ttk.Entry(license_window, textvariable=customer_email_var, width=40)
-            email_entry.pack(pady=5)
-            
-            status_label = ttk.Label(license_window, text="", foreground="blue")
-            status_label.pack(pady=5)
-            
-            def register_license():
-                key = license_key_var.get().strip().upper()
-                customer_name = customer_name_var.get().strip()
-                customer_email = customer_email_var.get().strip()
-                
-                if not key:
-                    messagebox.showerror("오류", "라이선스 키를 입력하세요.")
-                    return
-                
-                status_label.config(text="서버에 연결 중...", foreground="blue")
-                license_window.update()
-                
-                # 서버에 활성화 요청
-                success, msg = self.license_manager.activate_license(
-                    license_key=key,
-                    customer_name=customer_name,
-                    customer_email=customer_email
-                )
-                
-                if success:
-                    messagebox.showinfo("완료", "라이선스가 활성화되었습니다.")
-                    license_window.destroy()
-                    self.create_widgets()
-                else:
-                    status_label.config(text=f"오류: {msg}", foreground="red")
-                    messagebox.showerror("오류", f"라이선스 활성화 실패:\n{msg}")
-            
-            ttk.Button(license_window, text="등록", command=register_license).pack(pady=20)
-            
-            return False
+        # 창을 화면 중앙에 배치
+        login_window.update_idletasks()
+        x = (login_window.winfo_screenwidth() // 2) - (400 // 2)
+        y = (login_window.winfo_screenheight() // 2) - (250 // 2)
+        login_window.geometry(f"400x250+{x}+{y}")
         
-        return True
+        ttk.Label(login_window, text="로그인", font=("맑은 고딕", 16, "bold")).pack(pady=15)
+        
+        ttk.Label(login_window, text="아이디:").pack(pady=5)
+        user_id_var = tk.StringVar()
+        user_id_entry = ttk.Entry(login_window, textvariable=user_id_var, width=30)
+        user_id_entry.pack(pady=5)
+        user_id_entry.focus()
+        
+        ttk.Label(login_window, text="비밀번호:").pack(pady=5)
+        password_var = tk.StringVar()
+        password_entry = ttk.Entry(login_window, textvariable=password_var, width=30, show="*")
+        password_entry.pack(pady=5)
+        
+        status_label = ttk.Label(login_window, text="", foreground="red", wraplength=350)
+        status_label.pack(pady=10)
+        
+        login_success = [False]  # 클로저를 위한 리스트
+        
+        def do_login():
+            user_id = user_id_var.get().strip()
+            password = password_var.get()
+            
+            if not user_id or not password:
+                status_label.config(text="아이디와 비밀번호를 입력하세요.", foreground="red")
+                return
+            
+            status_label.config(text="로그인 중...", foreground="blue")
+            login_window.update()
+            
+            hardware_id = get_hardware_id()
+            success, message, user_info = self.user_auth_manager.login(user_id, password, hardware_id)
+            
+            if success and user_info:
+                self.current_user_id = user_id
+                self.current_user_info = user_info
+                login_success[0] = True
+                login_window.destroy()
+            else:
+                status_label.config(text=message, foreground="red")
+        
+        def on_enter(event):
+            do_login()
+        
+        password_entry.bind('<Return>', on_enter)
+        user_id_entry.bind('<Return>', lambda e: password_entry.focus())
+        
+        ttk.Button(login_window, text="로그인", command=do_login, width=15).pack(pady=10)
+        
+        # 창이 닫힐 때까지 대기
+        login_window.wait_window()
+        
+        return login_success[0]
     
     def create_widgets(self):
         """GUI 위젯 생성"""
@@ -197,12 +208,13 @@ class HanjinAutomationApp:
                                 font=("맑은 고딕", 9), foreground="gray")
         author_label.pack(side=tk.LEFT, padx=20)
         
-        # 라이선스 정보
-        license_info = self.license_manager.get_license_info()
-        if license_info:
-            license_text = f"라이선스: {license_info.get('license_key', '')[:8]}... (만료: {license_info.get('expiry_date', '')[:10]})"
-            license_label = ttk.Label(title_frame, text=license_text, font=("맑은 고딕", 8), foreground="gray")
-            license_label.pack(side=tk.RIGHT)
+        # 사용자 정보
+        if self.current_user_info:
+            expiry_date = self.current_user_info.get('expiry_date', '')
+            expiry_display = expiry_date[:10] if expiry_date else 'N/A'
+            user_text = f"사용자: {self.current_user_info.get('name', '')} ({self.current_user_id}) | 만료: {expiry_display}"
+            user_label = ttk.Label(title_frame, text=user_text, font=("맑은 고딕", 8), foreground="gray")
+            user_label.pack(side=tk.RIGHT)
         
         # === 설정 (포트 + 딜레이) ===
         settings_frame = ttk.LabelFrame(main_frame, text="설정", padding="8")
@@ -359,6 +371,50 @@ class HanjinAutomationApp:
             self.bt_status_indicator.config(foreground="red")
             self.log(f"연결 오류: {e}")
     
+    def verify_mac_address(self):
+        """MAC 주소 검증"""
+        if not self.current_user_id:
+            return False
+        
+        port = self.port_var.get()
+        if not port:
+            messagebox.showwarning("경고", "COM 포트를 선택하세요.")
+            return False
+        
+        try:
+            # ESP32 연결
+            controller = BluetoothController(port=port, baudrate=115200)
+            if not controller.connect():
+                messagebox.showerror("오류", "ESP32 연결에 실패했습니다.")
+                return False
+            
+            # MAC 주소 확인
+            mac_address = controller.get_connected_mac_address()
+            controller.disconnect()
+            
+            if not mac_address:
+                messagebox.showerror("오류", "MAC 주소를 확인할 수 없습니다.\nESP32와 블루투스 연결을 확인하세요.")
+                return False
+            
+            # 서버에서 MAC 주소 검증
+            hardware_id = get_hardware_id()
+            allowed, message = self.user_auth_manager.verify_mac_address(
+                self.current_user_id, 
+                mac_address, 
+                hardware_id
+            )
+            
+            if not allowed:
+                messagebox.showerror("등록되지 않은 사용자", 
+                    f"{message}\n\n연결된 휴대폰의 MAC 주소: {mac_address}\n관리자에게 문의하여 MAC 주소를 등록해주세요.")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            messagebox.showerror("오류", f"MAC 주소 검증 중 오류가 발생했습니다:\n{e}")
+            return False
+    
     def check_bluetooth_status(self):
         """블루투스 상태 주기적 확인 (5초마다)"""
         if not self.is_running:
@@ -475,22 +531,14 @@ class HanjinAutomationApp:
     
     def start_automation(self):
         """동기화 실행 (자동화 시작)"""
-        # 개발 모드 확인
-        dev_mode_file = Path(__file__).parent.parent / "config" / "dev_mode.txt"
-        is_dev_mode = False
-        if dev_mode_file.exists():
-            try:
-                with open(dev_mode_file, 'r', encoding='utf-8') as f:
-                    is_dev_mode = f.read().strip().lower() == 'true'
-            except:
-                pass
+        if not self.current_user_id:
+            messagebox.showerror("오류", "로그인이 필요합니다.")
+            return
         
-        if not is_dev_mode:
-            # 자동화 시작 전 라이선스 검증 (강제 온라인 검증)
-            valid, message = self.license_manager.verify_license(force_online=True)
-            if not valid:
-                messagebox.showerror("라이선스 오류", f"라이선스 검증 실패:\n{message}\n\n프로그램을 사용할 수 없습니다.")
-                return
+        # MAC 주소 검증
+        if not self.verify_mac_address():
+            return
+        
         if self.is_running:
             return
         
@@ -594,10 +642,19 @@ class HanjinAutomationApp:
             # 사용 통계 서버에 전송
             try:
                 self.log("사용 통계 전송 중...")
-                success, msg = self.license_manager.record_usage(
+                # MAC 주소 다시 확인
+                mac_address = None
+                if controller.is_connected():
+                    mac_address = controller.get_connected_mac_address()
+                
+                hardware_id = get_hardware_id()
+                success, msg = self.user_auth_manager.record_usage(
+                    user_id=self.current_user_id,
                     total_invoices=total,
                     success_count=success_count,
-                    fail_count=fail_count
+                    fail_count=fail_count,
+                    mac_address=mac_address,
+                    hardware_id=hardware_id
                 )
                 if success:
                     self.log("사용 통계 전송 완료")

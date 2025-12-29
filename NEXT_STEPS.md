@@ -63,3 +63,7 @@ Get-PnpDevice -Class Ports | Where-Object {$_.Status -eq "OK"}
 
 **다음**: COM 포트 번호를 확인하고 설정 파일을 업데이트한 후, Arduino IDE 설정을 시작하세요!
 
+
+
+
+

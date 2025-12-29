@@ -87,3 +87,7 @@ pyinstaller build_installer.spec
 - 제거가 쉬움
 - 시작 메뉴에서 쉽게 찾을 수 있음
 
+
+
+
+

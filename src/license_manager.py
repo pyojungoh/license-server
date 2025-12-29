@@ -110,3 +110,7 @@ def generate_license_key(days: int = 30) -> tuple[str, str]:
     
     return license_key, expiry_date_str
 
+
+
+
+

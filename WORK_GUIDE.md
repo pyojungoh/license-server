@@ -166,6 +166,77 @@ hanjin/
 
 ## 🛠️ 개발 환경
 
+### 코딩 준비 상태
+
+#### Python 환경
+- ✅ **Python 버전**: 3.13.4
+- ✅ **필수 라이브러리 설치 확인**:
+  - `pyserial` (3.5) - 시리얼 통신
+  - `openpyxl` (3.1.5) - 엑셀 파일 읽기
+  - `colorama` (0.4.6) - 터미널 색상 출력
+  - `requests` (2.31.0) - HTTP 통신
+  - `Flask` (3.0.0) - 웹 서버
+  - `Flask-Cors` (4.0.0) - CORS 처리
+
+#### 프로젝트 구조
+```
+hanjin/
+├── src/                      # 클라이언트 소스 코드
+│   ├── main.py              # 메인 프로그램 (터미널 버전)
+│   ├── gui_app.py           # GUI 애플리케이션 (Tkinter)
+│   ├── bluetooth_controller.py  # ESP32 시리얼 통신
+│   ├── excel_reader.py      # 엑셀 파일 읽기
+│   ├── online_license_manager.py  # 온라인 라이선스 관리
+│   ├── hardware_id.py       # 하드웨어 ID 추출
+│   ├── license_manager.py   # 로컬 라이선스 관리 (레거시)
+│   └── utils.py             # 유틸리티 함수
+├── server/                   # 서버 코드 (Railway 배포)
+│   ├── license_server.py    # Flask 라이선스 서버
+│   ├── wsgi.py              # WSGI 엔트리 포인트
+│   └── templates/           # 웹 관리 페이지
+├── firmware/                 # ESP32 펌웨어
+│   └── esp32_ble_hid/
+│       └── esp32_ble_hid.ino
+├── config/                   # 설정 파일
+│   ├── settings.json        # 프로그램 설정
+│   ├── dev_mode.txt         # 개발 모드 설정
+│   └── license.json         # 로컬 라이선스 정보
+├── data/                     # 데이터 파일
+│   └── invoices.xlsx        # 엑셀 입력 파일
+└── logs/                     # 로그 파일
+```
+
+#### 주요 기능 구현 상태
+- ✅ GUI 애플리케이션 (Tkinter)
+- ✅ ESP32 시리얼 통신
+- ✅ 엑셀 파일 읽기 (헤더 없이 1행 1열부터)
+- ✅ 온라인 라이선스 검증 (강제 온라인 검증 지원)
+- ✅ 하드웨어 ID 바인딩
+- ✅ 개발 모드 지원 (라이선스 검증 우회)
+- ✅ 서버 API (Railway 배포 완료)
+- ✅ ESP32 BLE HID 펌웨어
+
+#### 설정 파일
+- **`config/settings.json`**: 프로그램 설정 (COM 포트, 딜레이, 엑셀 경로 등)
+- **`config/dev_mode.txt`**: 개발 모드 설정 (`true`/`false`)
+- **`config/license.json`**: 로컬 라이선스 정보
+
+#### 실행 방법
+```bash
+# GUI 프로그램 실행
+cd c:\hanjin
+python src/gui_app.py
+# 또는
+run_gui.bat
+
+# CLI 프로그램 실행
+python src/main.py
+
+# 서버 실행 (로컬)
+cd server
+python license_server.py
+```
+
 ### 로컬 개발
 ```bash
 # 서버 실행
@@ -231,5 +302,33 @@ python src/gui_app.py
 
 ---
 
-**최종 업데이트**: 2025-12-27
+---
+
+## 📝 코딩 준비 체크리스트
+
+### 환경 설정
+- [ ] Python 3.8+ 설치 확인
+- [ ] 필수 라이브러리 설치 (`pip install -r requirements.txt`)
+- [ ] COM 포트 확인 (ESP32 연결 시)
+- [ ] 설정 파일 확인 (`config/settings.json`)
+
+### 개발 시작 전
+- [ ] `WORK_GUIDE.md` 확인
+- [ ] `작업내역.md` 확인 (최근 변경사항)
+- [ ] 개발 모드 설정 확인 (`config/dev_mode.txt`)
+- [ ] 라이선스 서버 URL 확인
+
+### 작업 시작
+1. 현재 코드 상태 파악
+2. 변경할 파일 확인
+3. 테스트 계획 수립
+4. 코드 수정
+5. 테스트 수행
+6. 커밋 및 푸시
+
+---
+
+**최종 업데이트**: 2025-01-27
+
+
 

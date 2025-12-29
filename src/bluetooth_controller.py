@@ -97,6 +97,51 @@ class BluetoothController:
         """
         return self.serial_conn is not None and self.serial_conn.is_open
     
+    def get_connected_mac_address(self) -> Optional[str]:
+        """
+        ESP32를 통해 연결된 모바일 기기의 MAC 주소 확인
+        
+        Returns:
+            MAC 주소 (예: "AA:BB:CC:DD:EE:FF") 또는 None
+        """
+        if not self.serial_conn or not self.serial_conn.is_open:
+            logger.error("BLT AI 로봇이 연결되지 않았습니다.")
+            return None
+        
+        try:
+            # 기존 버퍼 비우기
+            self.serial_conn.reset_input_buffer()
+            
+            # "GET_CONNECTED_MAC" 명령 전송
+            command = "GET_CONNECTED_MAC\n"
+            self.serial_conn.write(command.encode('utf-8'))
+            self.serial_conn.flush()
+            
+            # 응답 대기 (최대 2초)
+            timeout_time = time.time() + 2.0
+            response_lines = []
+            
+            while time.time() < timeout_time:
+                if self.serial_conn.in_waiting > 0:
+                    line = self.serial_conn.readline().decode('utf-8', errors='ignore').strip()
+                    if line:
+                        response_lines.append(line)
+                        # MAC 주소 형식 확인 (XX:XX:XX:XX:XX:XX)
+                        if ':' in line and len(line.split(':')) == 6:
+                            # MAC 주소 추출 (공백 제거, 대문자로 변환)
+                            mac = line.replace(' ', '').upper()
+                            if len(mac) == 17:  # MAC 주소 길이 확인
+                                logger.info(f"MAC 주소 수신: {mac}")
+                                return mac
+                time.sleep(0.1)
+            
+            logger.warning("MAC 주소 수신 타임아웃 또는 형식 오류")
+            return None
+            
+        except Exception as e:
+            logger.error(f"MAC 주소 확인 실패: {e}")
+            return None
+    
     def __enter__(self):
         """컨텍스트 매니저 진입"""
         self.connect()

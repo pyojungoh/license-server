@@ -14,6 +14,7 @@ import datetime
 from pathlib import Path
 import json
 import os
+import bcrypt
 
 # 템플릿 폴더 경로 (현재 파일 기준)
 template_dir = Path(__file__).parent / 'templates'
@@ -135,6 +136,100 @@ def init_db():
                 CREATE INDEX IF NOT EXISTS idx_usage_stats_license_date 
                 ON usage_stats(license_key, usage_date)
             """)
+            
+            # 사용자 계정 테이블 생성
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    user_id VARCHAR(100) UNIQUE NOT NULL,
+                    password_hash VARCHAR(255) NOT NULL,
+                    name VARCHAR(100) NOT NULL,
+                    email VARCHAR(100),
+                    phone VARCHAR(20),
+                    hardware_id VARCHAR(255),
+                    created_date TIMESTAMP DEFAULT NOW(),
+                    last_login TIMESTAMP,
+                    is_active BOOLEAN DEFAULT TRUE
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_subscriptions (
+                    id SERIAL PRIMARY KEY,
+                    user_id VARCHAR(100) NOT NULL,
+                    subscription_type VARCHAR(50) DEFAULT 'monthly',
+                    start_date TIMESTAMP NOT NULL,
+                    expiry_date TIMESTAMP NOT NULL,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS allowed_mac_addresses (
+                    id SERIAL PRIMARY KEY,
+                    user_id VARCHAR(100) NOT NULL,
+                    mac_address VARCHAR(17) NOT NULL,
+                    device_name VARCHAR(100),
+                    registered_date TIMESTAMP DEFAULT NOW(),
+                    is_active BOOLEAN DEFAULT TRUE,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                    UNIQUE(user_id, mac_address)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_usage (
+                    id SERIAL PRIMARY KEY,
+                    user_id VARCHAR(100) NOT NULL,
+                    usage_date TIMESTAMP NOT NULL,
+                    total_invoices INTEGER DEFAULT 0,
+                    success_count INTEGER DEFAULT 0,
+                    fail_count INTEGER DEFAULT 0,
+                    hardware_id VARCHAR(255),
+                    mac_address VARCHAR(17),
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_payments (
+                    id SERIAL PRIMARY KEY,
+                    user_id VARCHAR(100) NOT NULL,
+                    payment_date TIMESTAMP NOT NULL,
+                    amount DECIMAL(10, 2) NOT NULL,
+                    period_days INTEGER NOT NULL,
+                    payment_method VARCHAR(50),
+                    note TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                )
+            """)
+            
+            # 인덱스 생성
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user_id ON user_subscriptions(user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_subscriptions_expiry ON user_subscriptions(expiry_date)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_allowed_mac_user_id ON allowed_mac_addresses(user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_allowed_mac_address ON allowed_mac_addresses(mac_address)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_usage_user_id ON user_usage(user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_usage_date ON user_usage(usage_date)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_payments_user_id ON user_payments(user_id)
+            """)
         else:
             # SQLite 테이블 생성
             cursor.execute("""
@@ -179,6 +274,100 @@ def init_db():
                 CREATE INDEX IF NOT EXISTS idx_usage_stats_license_date 
                 ON usage_stats(license_key, usage_date)
             """)
+            
+            # 사용자 계정 테이블 생성
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    email TEXT,
+                    phone TEXT,
+                    hardware_id TEXT,
+                    created_date TEXT NOT NULL,
+                    last_login TEXT,
+                    is_active INTEGER DEFAULT 1
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_subscriptions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    subscription_type TEXT DEFAULT 'monthly',
+                    start_date TEXT NOT NULL,
+                    expiry_date TEXT NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS allowed_mac_addresses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    mac_address TEXT NOT NULL,
+                    device_name TEXT,
+                    registered_date TEXT NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                    UNIQUE(user_id, mac_address)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_usage (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    usage_date TEXT NOT NULL,
+                    total_invoices INTEGER DEFAULT 0,
+                    success_count INTEGER DEFAULT 0,
+                    fail_count INTEGER DEFAULT 0,
+                    hardware_id TEXT,
+                    mac_address TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_payments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    payment_date TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    period_days INTEGER NOT NULL,
+                    payment_method TEXT,
+                    note TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                )
+            """)
+            
+            # 인덱스 생성
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user_id ON user_subscriptions(user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_subscriptions_expiry ON user_subscriptions(expiry_date)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_allowed_mac_user_id ON allowed_mac_addresses(user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_allowed_mac_address ON allowed_mac_addresses(mac_address)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_usage_user_id ON user_usage(user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_usage_date ON user_usage(usage_date)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_payments_user_id ON user_payments(user_id)
+            """)
         
         conn.commit()
         logger.info("✓ 데이터베이스 테이블 생성 완료")
@@ -194,6 +383,14 @@ def init_db():
 def generate_license_key() -> str:
     """라이선스 키 생성"""
     return ''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZ23456789') for _ in range(16))
+
+def hash_password(password: str) -> str:
+    """비밀번호 해싱"""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """비밀번호 검증"""
+    return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
 
 @app.route('/api/activate', methods=['POST'])
 def activate_license():
@@ -1117,6 +1314,670 @@ def record_usage():
     return jsonify({
         'success': True,
         'message': '사용 통계가 기록되었습니다.'
+    })
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    """사용자 로그인"""
+    data = request.json
+    user_id = data.get('user_id', '').strip()
+    password = data.get('password', '')
+    hardware_id = data.get('hardware_id', '')
+    
+    if not user_id or not password:
+        return jsonify({'success': False, 'message': '아이디와 비밀번호가 필요합니다.'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    # 사용자 조회
+    if USE_POSTGRESQL:
+        cursor.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+    else:
+        cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    
+    user_data = cursor.fetchone()
+    
+    if not user_data:
+        conn.close()
+        return jsonify({'success': False, 'message': '아이디 또는 비밀번호가 잘못되었습니다.'}), 400
+    
+    # 비밀번호 확인
+    if USE_POSTGRESQL:
+        password_hash = user_data.get('password_hash')
+        is_active = user_data.get('is_active')
+        name = user_data.get('name')
+        email = user_data.get('email')
+    else:
+        password_hash = user_data[2]  # password_hash 컬럼
+        is_active = bool(user_data[9])  # is_active 컬럼
+        name = user_data[3]  # name 컬럼
+        email = user_data[4]  # email 컬럼
+    
+    if not verify_password(password, password_hash):
+        conn.close()
+        return jsonify({'success': False, 'message': '아이디 또는 비밀번호가 잘못되었습니다.'}), 400
+    
+    # 계정 활성화 확인
+    if not is_active:
+        conn.close()
+        return jsonify({'success': False, 'message': '비활성화된 계정입니다. 관리자에게 문의하세요.'}), 400
+    
+    # 구독 정보 조회
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT expiry_date FROM user_subscriptions 
+            WHERE user_id = %s AND is_active = TRUE
+            ORDER BY expiry_date DESC LIMIT 1
+        """, (user_id,))
+    else:
+        cursor.execute("""
+            SELECT expiry_date FROM user_subscriptions 
+            WHERE user_id = ? AND is_active = 1
+            ORDER BY expiry_date DESC LIMIT 1
+        """, (user_id,))
+    
+    sub_data = cursor.fetchone()
+    expiry_date = None
+    if sub_data:
+        if USE_POSTGRESQL:
+            expiry_date_val = sub_data.get('expiry_date')
+        else:
+            expiry_date_val = sub_data[0]
+        
+        if isinstance(expiry_date_val, str):
+            expiry_date = datetime.datetime.fromisoformat(expiry_date_val)
+        else:
+            expiry_date = expiry_date_val
+    
+    # last_login 업데이트
+    now = datetime.datetime.now()
+    if USE_POSTGRESQL:
+        cursor.execute("UPDATE users SET last_login = %s WHERE user_id = %s", (now, user_id))
+    else:
+        cursor.execute("UPDATE users SET last_login = ? WHERE user_id = ?", (now.isoformat(), user_id))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({
+        'success': True,
+        'message': '로그인 성공',
+        'user_info': {
+            'user_id': user_id,
+            'name': name,
+            'email': email,
+            'expiry_date': expiry_date.isoformat() if expiry_date else None,
+            'is_active': True
+        }
+    })
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """사용자 로그아웃"""
+    data = request.json
+    user_id = data.get('user_id', '')
+    
+    return jsonify({
+        'success': True,
+        'message': '로그아웃되었습니다.'
+    })
+
+@app.route('/api/verify_mac_address', methods=['POST'])
+def verify_mac_address():
+    """MAC 주소 검증"""
+    data = request.json
+    user_id = data.get('user_id', '').strip()
+    mac_address = data.get('mac_address', '').strip().upper()
+    hardware_id = data.get('hardware_id', '')
+    
+    if not user_id or not mac_address:
+        return jsonify({'success': False, 'message': '사용자 ID와 MAC 주소가 필요합니다.'}), 400
+    
+    # MAC 주소 형식 검증 (기본)
+    if len(mac_address) != 17 or mac_address.count(':') != 5:
+        return jsonify({'success': False, 'message': '올바른 MAC 주소 형식이 아닙니다.'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    # 허용된 MAC 주소 확인
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT * FROM allowed_mac_addresses 
+            WHERE user_id = %s AND mac_address = %s AND is_active = TRUE
+        """, (user_id, mac_address))
+    else:
+        cursor.execute("""
+            SELECT * FROM allowed_mac_addresses 
+            WHERE user_id = ? AND mac_address = ? AND is_active = 1
+        """, (user_id, mac_address))
+    
+    mac_data = cursor.fetchone()
+    
+    if mac_data:
+        conn.close()
+        return jsonify({
+            'success': True,
+            'allowed': True,
+            'message': '허용된 사용자입니다.'
+        })
+    else:
+        conn.close()
+        return jsonify({
+            'success': True,
+            'allowed': False,
+            'message': '등록되지 않은 사용자입니다. 관리자에게 문의하세요.'
+        })
+
+@app.route('/api/create_user', methods=['POST'])
+def create_user():
+    """사용자 생성 (관리자용)"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    user_id = data.get('user_id', '').strip()
+    password = data.get('password', '')
+    name = data.get('name', '').strip()
+    email = data.get('email', '').strip()
+    phone = data.get('phone', '').strip()
+    
+    if not user_id or not password or not name:
+        return jsonify({'success': False, 'message': '아이디, 비밀번호, 이름이 필요합니다.'}), 400
+    
+    # 비밀번호 해싱
+    password_hash = hash_password(password)
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor()
+    else:
+        cursor = conn.cursor()
+    
+    now = datetime.datetime.now()
+    try:
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                INSERT INTO users (user_id, password_hash, name, email, phone, created_date)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (user_id, password_hash, name, email, phone, now))
+        else:
+            cursor.execute("""
+                INSERT INTO users (user_id, password_hash, name, email, phone, created_date)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (user_id, password_hash, name, email, phone, now.isoformat()))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': '사용자 계정이 생성되었습니다.',
+            'user_id': user_id
+        })
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        if 'UNIQUE constraint' in str(e) or 'duplicate key' in str(e).lower():
+            return jsonify({'success': False, 'message': '이미 존재하는 사용자 ID입니다.'}), 400
+        return jsonify({'success': False, 'message': f'사용자 생성 실패: {str(e)}'}), 500
+
+@app.route('/api/list_users', methods=['POST'])
+def list_users():
+    """사용자 목록 조회 (관리자용)"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT u.user_id, u.name, u.email, u.is_active, u.created_date, u.last_login,
+                   us.expiry_date
+            FROM users u
+            LEFT JOIN user_subscriptions us ON u.user_id = us.user_id AND us.is_active = TRUE
+            ORDER BY u.created_date DESC
+        """)
+    else:
+        cursor.execute("""
+            SELECT u.user_id, u.name, u.email, u.is_active, u.created_date, u.last_login,
+                   us.expiry_date
+            FROM users u
+            LEFT JOIN user_subscriptions us ON u.user_id = us.user_id AND us.is_active = 1
+            ORDER BY u.created_date DESC
+        """)
+    
+    users = []
+    for row in cursor.fetchall():
+        if USE_POSTGRESQL:
+            expiry_date_val = row.get('expiry_date')
+            if expiry_date_val:
+                if isinstance(expiry_date_val, str):
+                    expiry_date = expiry_date_val
+                else:
+                    expiry_date = expiry_date_val.isoformat()
+            else:
+                expiry_date = None
+            
+            users.append({
+                'user_id': row.get('user_id'),
+                'name': row.get('name'),
+                'email': row.get('email'),
+                'is_active': bool(row.get('is_active')),
+                'created_date': row.get('created_date').isoformat() if row.get('created_date') and hasattr(row.get('created_date'), 'isoformat') else (row.get('created_date') or ''),
+                'last_login': row.get('last_login').isoformat() if row.get('last_login') and hasattr(row.get('last_login'), 'isoformat') else (row.get('last_login') or ''),
+                'expiry_date': expiry_date
+            })
+        else:
+            expiry_date_val = row[6] if len(row) > 6 else None
+            expiry_date = expiry_date_val if expiry_date_val else None
+            
+            users.append({
+                'user_id': row[0],
+                'name': row[1],
+                'email': row[2],
+                'is_active': bool(row[3]),
+                'created_date': row[4] or '',
+                'last_login': row[5] or '',
+                'expiry_date': expiry_date
+            })
+    
+    conn.close()
+    
+    return jsonify({
+        'success': True,
+        'users': users
+    })
+
+@app.route('/api/register_mac_address', methods=['POST'])
+def register_mac_address():
+    """MAC 주소 등록 (관리자용)"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    user_id = data.get('user_id', '').strip()
+    mac_address = data.get('mac_address', '').strip().upper()
+    device_name = data.get('device_name', '').strip()
+    
+    if not user_id or not mac_address:
+        return jsonify({'success': False, 'message': '사용자 ID와 MAC 주소가 필요합니다.'}), 400
+    
+    # MAC 주소 형식 검증
+    if len(mac_address) != 17 or mac_address.count(':') != 5:
+        return jsonify({'success': False, 'message': '올바른 MAC 주소 형식이 아닙니다. (예: AA:BB:CC:DD:EE:FF)'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor()
+    else:
+        cursor = conn.cursor()
+    
+    now = datetime.datetime.now()
+    try:
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                INSERT INTO allowed_mac_addresses (user_id, mac_address, device_name, registered_date)
+                VALUES (%s, %s, %s, %s)
+            """, (user_id, mac_address, device_name, now))
+        else:
+            cursor.execute("""
+                INSERT INTO allowed_mac_addresses (user_id, mac_address, device_name, registered_date)
+                VALUES (?, ?, ?, ?)
+            """, (user_id, mac_address, device_name, now.isoformat()))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'MAC 주소가 등록되었습니다.'
+        })
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        if 'UNIQUE constraint' in str(e) or 'duplicate key' in str(e).lower():
+            return jsonify({'success': False, 'message': '이미 등록된 MAC 주소입니다.'}), 400
+        return jsonify({'success': False, 'message': f'MAC 주소 등록 실패: {str(e)}'}), 500
+
+@app.route('/api/list_user_mac_addresses', methods=['POST'])
+def list_user_mac_addresses():
+    """사용자별 MAC 주소 목록 조회"""
+    data = request.json
+    user_id = data.get('user_id', '').strip()
+    admin_key = data.get('admin_key', '')  # 관리자용 (선택사항)
+    
+    if not user_id:
+        return jsonify({'success': False, 'message': '사용자 ID가 필요합니다.'}), 400
+    
+    # 관리자가 아니면 자신의 MAC 주소만 조회 가능
+    is_admin = admin_key == ADMIN_KEY
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT mac_address, device_name, registered_date, is_active
+            FROM allowed_mac_addresses
+            WHERE user_id = %s
+            ORDER BY registered_date DESC
+        """, (user_id,))
+    else:
+        cursor.execute("""
+            SELECT mac_address, device_name, registered_date, is_active
+            FROM allowed_mac_addresses
+            WHERE user_id = ?
+            ORDER BY registered_date DESC
+        """, (user_id,))
+    
+    mac_addresses = []
+    for row in cursor.fetchall():
+        if USE_POSTGRESQL:
+            registered_date_val = row.get('registered_date')
+            if registered_date_val and hasattr(registered_date_val, 'isoformat'):
+                registered_date = registered_date_val.isoformat()
+            else:
+                registered_date = registered_date_val or ''
+            
+            mac_addresses.append({
+                'mac_address': row.get('mac_address'),
+                'device_name': row.get('device_name') or '',
+                'registered_date': registered_date,
+                'is_active': bool(row.get('is_active'))
+            })
+        else:
+            mac_addresses.append({
+                'mac_address': row[0],
+                'device_name': row[1] or '',
+                'registered_date': row[2] or '',
+                'is_active': bool(row[3])
+            })
+    
+    conn.close()
+    
+    return jsonify({
+        'success': True,
+        'mac_addresses': mac_addresses
+    })
+
+@app.route('/api/remove_mac_address', methods=['POST'])
+def remove_mac_address():
+    """MAC 주소 삭제 (관리자용)"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    user_id = data.get('user_id', '').strip()
+    mac_address = data.get('mac_address', '').strip().upper()
+    
+    if not user_id or not mac_address:
+        return jsonify({'success': False, 'message': '사용자 ID와 MAC 주소가 필요합니다.'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor()
+    else:
+        cursor = conn.cursor()
+    
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            DELETE FROM allowed_mac_addresses
+            WHERE user_id = %s AND mac_address = %s
+        """, (user_id, mac_address))
+    else:
+        cursor.execute("""
+            DELETE FROM allowed_mac_addresses
+            WHERE user_id = ? AND mac_address = ?
+        """, (user_id, mac_address))
+    
+    conn.commit()
+    deleted_count = cursor.rowcount
+    conn.close()
+    
+    if deleted_count > 0:
+        return jsonify({
+            'success': True,
+            'message': 'MAC 주소가 삭제되었습니다.'
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'message': 'MAC 주소를 찾을 수 없습니다.'
+        }), 404
+
+@app.route('/api/user_info', methods=['POST'])
+def user_info():
+    """사용자 정보 조회"""
+    data = request.json
+    user_id = data.get('user_id', '').strip()
+    
+    if not user_id:
+        return jsonify({'success': False, 'message': '사용자 ID가 필요합니다.'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT u.user_id, u.name, u.email, u.is_active, us.expiry_date, us.subscription_type
+            FROM users u
+            LEFT JOIN user_subscriptions us ON u.user_id = us.user_id AND us.is_active = TRUE
+            WHERE u.user_id = %s
+            ORDER BY us.expiry_date DESC LIMIT 1
+        """, (user_id,))
+    else:
+        cursor.execute("""
+            SELECT u.user_id, u.name, u.email, u.is_active, us.expiry_date, us.subscription_type
+            FROM users u
+            LEFT JOIN user_subscriptions us ON u.user_id = us.user_id AND us.is_active = 1
+            WHERE u.user_id = ?
+            ORDER BY us.expiry_date DESC LIMIT 1
+        """, (user_id,))
+    
+    user_data = cursor.fetchone()
+    conn.close()
+    
+    if not user_data:
+        return jsonify({'success': False, 'message': '사용자를 찾을 수 없습니다.'}), 404
+    
+    if USE_POSTGRESQL:
+        expiry_date_val = user_data.get('expiry_date')
+        expiry_date = expiry_date_val.isoformat() if expiry_date_val and hasattr(expiry_date_val, 'isoformat') else (expiry_date_val or None)
+        
+        return jsonify({
+            'success': True,
+            'user_info': {
+                'user_id': user_data.get('user_id'),
+                'name': user_data.get('name'),
+                'email': user_data.get('email'),
+                'expiry_date': expiry_date,
+                'is_active': bool(user_data.get('is_active')),
+                'subscription_type': user_data.get('subscription_type') or 'monthly'
+            }
+        })
+    else:
+        expiry_date_val = user_data[4] if len(user_data) > 4 else None
+        expiry_date = expiry_date_val if expiry_date_val else None
+        
+        return jsonify({
+            'success': True,
+            'user_info': {
+                'user_id': user_data[0],
+                'name': user_data[1],
+                'email': user_data[2],
+                'expiry_date': expiry_date,
+                'is_active': bool(user_data[3]),
+                'subscription_type': user_data[5] if len(user_data) > 5 else 'monthly'
+            }
+        })
+
+@app.route('/api/extend_user_subscription', methods=['POST'])
+def extend_user_subscription():
+    """사용자 구독 연장 (관리자용)"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    user_id = data.get('user_id', '').strip()
+    period_days = data.get('period_days', 30)
+    amount = data.get('amount', 0)
+    payment_method = data.get('payment_method', '')
+    note = data.get('note', '')
+    
+    if not user_id:
+        return jsonify({'success': False, 'message': '사용자 ID가 필요합니다.'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    # 현재 구독 확인
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            SELECT expiry_date FROM user_subscriptions
+            WHERE user_id = %s AND is_active = TRUE
+            ORDER BY expiry_date DESC LIMIT 1
+        """, (user_id,))
+    else:
+        cursor.execute("""
+            SELECT expiry_date FROM user_subscriptions
+            WHERE user_id = ? AND is_active = 1
+            ORDER BY expiry_date DESC LIMIT 1
+        """, (user_id,))
+    
+    sub_data = cursor.fetchone()
+    now = datetime.datetime.now()
+    
+    if sub_data:
+        if USE_POSTGRESQL:
+            current_expiry_val = sub_data.get('expiry_date')
+        else:
+            current_expiry_val = sub_data[0]
+        
+        if isinstance(current_expiry_val, str):
+            current_expiry = datetime.datetime.fromisoformat(current_expiry_val)
+        else:
+            current_expiry = current_expiry_val
+        
+        if current_expiry < now:
+            new_expiry = now + datetime.timedelta(days=period_days)
+        else:
+            new_expiry = current_expiry + datetime.timedelta(days=period_days)
+        
+        # 기존 구독 비활성화
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                UPDATE user_subscriptions SET is_active = FALSE
+                WHERE user_id = %s AND is_active = TRUE
+            """, (user_id,))
+        else:
+            cursor.execute("""
+                UPDATE user_subscriptions SET is_active = 0
+                WHERE user_id = ? AND is_active = 1
+            """, (user_id,))
+    else:
+        new_expiry = now + datetime.timedelta(days=period_days)
+    
+    # 새 구독 생성
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            INSERT INTO user_subscriptions (user_id, subscription_type, start_date, expiry_date, is_active)
+            VALUES (%s, 'monthly', %s, %s, TRUE)
+        """, (user_id, now, new_expiry))
+        
+        cursor.execute("""
+            INSERT INTO user_payments (user_id, payment_date, amount, period_days, payment_method, note)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (user_id, now, amount, period_days, payment_method, note))
+    else:
+        cursor.execute("""
+            INSERT INTO user_subscriptions (user_id, subscription_type, start_date, expiry_date, is_active)
+            VALUES (?, 'monthly', ?, ?, 1)
+        """, (user_id, now.isoformat(), new_expiry.isoformat()))
+        
+        cursor.execute("""
+            INSERT INTO user_payments (user_id, payment_date, amount, period_days, payment_method, note)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (user_id, now.isoformat(), amount, period_days, payment_method, note))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({
+        'success': True,
+        'message': '구독이 연장되었습니다.',
+        'expiry_date': new_expiry.isoformat()
+    })
+
+@app.route('/api/record_user_usage', methods=['POST'])
+def record_user_usage():
+    """사용자 사용량 기록"""
+    data = request.json
+    user_id = data.get('user_id', '').strip()
+    total_invoices = data.get('total_invoices', 0)
+    success_count = data.get('success_count', 0)
+    fail_count = data.get('fail_count', 0)
+    mac_address = data.get('mac_address', '').strip().upper()
+    hardware_id = data.get('hardware_id', '')
+    
+    if not user_id:
+        return jsonify({'success': False, 'message': '사용자 ID가 필요합니다.'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor()
+    else:
+        cursor = conn.cursor()
+    
+    now = datetime.datetime.now()
+    if USE_POSTGRESQL:
+        cursor.execute("""
+            INSERT INTO user_usage (user_id, usage_date, total_invoices, success_count, fail_count, mac_address, hardware_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (user_id, now, total_invoices, success_count, fail_count, mac_address, hardware_id))
+    else:
+        cursor.execute("""
+            INSERT INTO user_usage (user_id, usage_date, total_invoices, success_count, fail_count, mac_address, hardware_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (user_id, now.isoformat(), total_invoices, success_count, fail_count, mac_address, hardware_id))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({
+        'success': True,
+        'message': '사용량이 기록되었습니다.'
     })
 
 @app.route('/api/usage_stats', methods=['POST'])
