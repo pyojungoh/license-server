@@ -114,8 +114,7 @@ class UserAuthManager:
                 "user_id": user_id,
                 "password": password
             }
-            if hardware_id:
-                payload["hardware_id"] = hardware_id
+            # PC 프로그램이므로 device_uuid는 전송하지 않음 (모바일 앱 전용)
             
             response = requests.post(
                 f"{self.server_url}/api/login",
@@ -123,26 +122,43 @@ class UserAuthManager:
                 timeout=10
             )
             
+            # 응답 상태 코드에 따른 처리
+            try:
+                data = response.json()
+            except (ValueError, json.JSONDecodeError) as e:
+                logger.error(f"서버 응답 JSON 파싱 실패: {e}, 응답 내용: {response.text[:200]}")
+                return False, "서버 응답을 처리할 수 없습니다.", None
+            
             if response.status_code == 200:
-                data = response.json()
+                # 성공 응답
                 if data.get('success'):
-                    user_info = data.get('user_info', {})
-                    self.save_session(user_info)
-                    logger.info(f"로그인 성공: {user_id}")
-                    return True, "로그인 성공", user_info
+                    user_info = data.get('user_info')
+                    if user_info:
+                        self.save_session(user_info)
+                        logger.info(f"로그인 성공: {user_id}")
+                        return True, "로그인 성공", user_info
+                    else:
+                        logger.error(f"로그인 응답에 user_info가 없습니다: {data}")
+                        return False, "로그인 응답 형식이 올바르지 않습니다.", None
                 else:
-                    return False, data.get('message', '로그인 실패'), None
+                    error_msg = data.get('message', '로그인 실패')
+                    logger.warning(f"로그인 실패: {error_msg}")
+                    return False, error_msg, None
             else:
-                data = response.json()
-                return False, data.get('message', '서버 오류가 발생했습니다.'), None
+                # 오류 응답 (400, 403, 500 등)
+                error_msg = data.get('message', f'서버 오류가 발생했습니다. (상태 코드: {response.status_code})')
+                logger.error(f"로그인 실패 (상태 코드 {response.status_code}): {error_msg}")
+                return False, error_msg, None
                 
         except requests.exceptions.ConnectionError:
+            logger.error("서버 연결 실패")
             return False, "서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요.", None
         except requests.exceptions.Timeout:
+            logger.error("서버 응답 시간 초과")
             return False, "서버 응답 시간이 초과되었습니다.", None
         except Exception as e:
-            logger.error(f"로그인 오류: {e}")
-            return False, f"오류가 발생했습니다: {str(e)}", None
+            logger.error(f"로그인 오류: {e}", exc_info=True)
+            return False, f"로그인 처리 중 오류가 발생했습니다: {str(e)}", None
     
     def logout(self, user_id: str) -> Tuple[bool, str]:
         """
