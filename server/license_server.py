@@ -1704,20 +1704,20 @@ def user_login():
         conn.commit()
         conn.close()
         
-        # 모바일 앱 로그인 응답 (토큰 포함)
-        return jsonify({
-            'success': True,
-            'message': '로그인 성공',
-            'access_token': access_token,
-            'expires_at': expires_at.isoformat(),
-            'user_info': {
-                'user_id': user_id,
-                'name': name,
-                'email': email,
-                'expiry_date': expiry_date.isoformat() if expiry_date else None,
-                'is_active': True
-            }
-        })
+            # 모바일 앱 로그인 응답 (토큰 포함)
+            return jsonify({
+                'success': True,
+                'message': '로그인 성공',
+                'access_token': access_token,
+                'expires_at': expires_at.isoformat() if expires_at else None,
+                'user_info': {
+                    'user_id': user_id,
+                    'name': name,
+                    'email': email,
+                    'expiry_date': expiry_date.isoformat() if expiry_date else None,
+                    'is_active': True
+                }
+            })
     
     except Exception as e:
         import traceback
