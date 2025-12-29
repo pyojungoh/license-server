@@ -431,12 +431,77 @@ class HanjinAutomationApp:
                 if ':' not in mac_address and len(mac_address) == 12:
                     mac_address = ':'.join([mac_address[i:i+2] for i in range(0, 12, 2)])
             
+            # MAC 주소를 얻지 못한 경우 수동 입력 요청
             if not mac_address or mac_address == "00:00:00:00:00:00":
-                error_msg = "MAC 주소를 확인할 수 없습니다.\nESP32와 블루투스 연결을 확인하세요."
+                error_msg = "ESP32에서 MAC 주소를 자동으로 확인할 수 없습니다.\n\n"
+                error_msg += "모바일 기기의 MAC 주소를 직접 입력해주세요.\n"
+                error_msg += "(설정 > 휴대전화 정보 > 상태 > MAC 주소 또는 블루투스 MAC 주소에서 확인 가능)"
+                
+                # 수동 입력 창 표시
+                mac_input_window = tk.Toplevel(self.root)
+                mac_input_window.title("MAC 주소 입력")
+                mac_input_window.geometry("500x300")
+                mac_input_window.resizable(False, False)
+                mac_input_window.transient(self.root)
+                mac_input_window.grab_set()
+                
+                # 창을 화면 중앙에 배치
+                mac_input_window.update_idletasks()
+                x = (mac_input_window.winfo_screenwidth() // 2) - (500 // 2)
+                y = (mac_input_window.winfo_screenheight() // 2) - (300 // 2)
+                mac_input_window.geometry(f"500x300+{x}+{y}")
+                
+                ttk.Label(mac_input_window, text="MAC 주소 입력", font=("맑은 고딕", 14, "bold")).pack(pady=10)
+                
+                ttk.Label(mac_input_window, text="연결된 모바일 기기의 MAC 주소:", wraplength=450).pack(pady=5)
+                
+                mac_input_var = tk.StringVar()
+                mac_input_entry = ttk.Entry(mac_input_window, textvariable=mac_input_var, width=30, font=("맑은 고딕", 12))
+                mac_input_entry.pack(pady=10)
+                mac_input_entry.focus()
+                
+                ttk.Label(mac_input_window, text="형식: AA:BB:CC:DD:EE:FF (대문자 권장)", 
+                         font=("맑은 고딕", 9), foreground="gray").pack()
+                
                 if registered_macs:
-                    error_msg += f"\n\n등록된 MAC 주소 목록:\n" + "\n".join([f"  - {mac}" for mac in registered_macs])
-                messagebox.showerror("오류", error_msg)
-                return False
+                    ttk.Label(mac_input_window, text="\n등록된 MAC 주소:", font=("맑은 고딕", 9, "bold")).pack(pady=(10, 5))
+                    for registered_mac in registered_macs:
+                        ttk.Label(mac_input_window, text=f"  - {registered_mac}", 
+                                 font=("맑은 고딕", 9)).pack()
+                
+                input_success = [False]
+                entered_mac = [None]
+                
+                def do_confirm():
+                    mac = mac_input_var.get().strip().upper().replace(' ', '').replace('-', ':')
+                    # MAC 주소 형식 검증
+                    mac_pattern = r'^([0-9A-F]{2}:){5}[0-9A-F]{2}$'
+                    if not re.match(mac_pattern, mac):
+                        messagebox.showerror("오류", "올바른 MAC 주소 형식이 아닙니다.\n예: AA:BB:CC:DD:EE:FF", parent=mac_input_window)
+                        return
+                    
+                    entered_mac[0] = mac
+                    input_success[0] = True
+                    mac_input_window.destroy()
+                
+                def do_cancel():
+                    mac_input_window.destroy()
+                
+                button_frame = ttk.Frame(mac_input_window)
+                button_frame.pack(pady=20)
+                
+                ttk.Button(button_frame, text="확인", command=do_confirm, width=15).pack(side=tk.LEFT, padx=5)
+                ttk.Button(button_frame, text="취소", command=do_cancel, width=15).pack(side=tk.LEFT, padx=5)
+                
+                mac_input_entry.bind('<Return>', lambda e: do_confirm())
+                
+                mac_input_window.wait_window()
+                
+                if not input_success[0] or not entered_mac[0]:
+                    return False
+                
+                mac_address = entered_mac[0]
+                self.log(f"사용자가 입력한 MAC 주소: {mac_address}")
             
             # 서버에서 MAC 주소 검증
             hardware_id = get_hardware_id()
