@@ -2114,6 +2114,85 @@ def request_device_change():
         'message': '기기가 성공적으로 변경되었습니다. 다시 로그인해주세요.'
     })
 
+@app.route('/api/register', methods=['POST'])
+def register():
+    """사용자 자체 회원가입 (비활성 상태로 생성)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'message': '요청 데이터가 없습니다.'}), 400
+        
+        user_id = data.get('user_id', '').strip()
+        password = data.get('password', '')
+        name = data.get('name', '').strip()
+        email = data.get('email', '').strip()
+        phone = data.get('phone', '').strip()
+        
+        if not user_id or not password or not name:
+            return jsonify({'success': False, 'message': '아이디, 비밀번호, 이름이 필요합니다.'}), 400
+        
+        # 비밀번호 해싱
+        try:
+            password_hash = hash_password(password)
+        except Exception as e:
+            logger.error(f"비밀번호 해싱 실패: {e}")
+            return jsonify({'success': False, 'message': f'비밀번호 처리 실패: {str(e)}'}), 500
+        
+        conn = None
+        try:
+            conn = get_db_connection()
+            if USE_POSTGRESQL:
+                cursor = conn.cursor()
+            else:
+                cursor = conn.cursor()
+            
+            now = datetime.datetime.now()
+            try:
+                # is_active = False로 생성 (관리자 승인 필요)
+                if USE_POSTGRESQL:
+                    cursor.execute("""
+                        INSERT INTO users (user_id, password_hash, name, email, phone, created_date, is_active)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (user_id, password_hash, name, email, phone, now, False))
+                else:
+                    cursor.execute("""
+                        INSERT INTO users (user_id, password_hash, name, email, phone, created_date, is_active)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (user_id, password_hash, name, email, phone, now.isoformat(), 0))
+                
+                conn.commit()
+                logger.info(f"회원가입 성공 (비활성): {user_id}")
+                
+                return jsonify({
+                    'success': True,
+                    'message': '회원가입이 완료되었습니다. 관리자 승인 후 이용 가능합니다.'
+                })
+            except Exception as e:
+                if conn:
+                    conn.rollback()
+                error_msg = str(e)
+                logger.error(f"회원가입 실패: {error_msg}")
+                
+                if 'UNIQUE constraint' in error_msg or 'duplicate key' in error_msg.lower() or 'unique constraint' in error_msg.lower():
+                    return jsonify({'success': False, 'message': '이미 존재하는 사용자 ID입니다.'}), 400
+                elif 'does not exist' in error_msg.lower() or 'no such table' in error_msg.lower():
+                    return jsonify({'success': False, 'message': '데이터베이스 테이블이 없습니다. 서버 관리자에게 문의하세요.'}), 500
+                else:
+                    return jsonify({'success': False, 'message': f'회원가입 실패: {error_msg}'}), 500
+        finally:
+            if conn:
+                conn.close()
+                
+    except Exception as e:
+        logger.error(f"회원가입 처리 오류: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': f'회원가입 처리 중 오류가 발생했습니다: {str(e)}'
+        }), 500
+
 @app.route('/api/verify_mac_address', methods=['POST'])
 def verify_mac_address():
     """MAC 주소 검증"""
