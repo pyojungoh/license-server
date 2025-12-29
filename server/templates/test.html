@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>한진택배 대량 집하 처리 테스트</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: '맑은 고딕', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .header-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .header-icons {
+            display: flex;
+            gap: 15px;
+        }
+
+        .icon {
+            font-size: 20px;
+            color: #666;
+            cursor: pointer;
+        }
+
+        .instruction {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .sync-icon {
+            font-size: 18px;
+            cursor: pointer;
+        }
+
+        .input-section {
+            margin-bottom: 20px;
+        }
+
+        .input-label {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .input-container {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .waybill-input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        .waybill-input:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .camera-icon {
+            font-size: 20px;
+            color: #666;
+            cursor: pointer;
+        }
+
+        .enter-button {
+            padding: 12px 30px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .enter-button:hover {
+            background-color: #0056b3;
+        }
+
+        .enter-button:focus {
+            outline: 2px solid #0056b3;
+        }
+
+        .counters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            font-size: 14px;
+            flex-wrap: wrap;
+        }
+
+        .counter-item {
+            color: #666;
+        }
+
+        .counter-item .total {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .box-type-section {
+            margin-bottom: 20px;
+        }
+
+        .box-type-container {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .box-type-select {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            background-color: white;
+        }
+
+        .box-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .box-button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .box-button:hover {
+            background-color: #0056b3;
+        }
+
+        .duplicate-info {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .list-header {
+            display: grid;
+            grid-template-columns: 40px 1fr 80px 80px;
+            gap: 10px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 5px 5px 0 0;
+            font-weight: bold;
+            font-size: 14px;
+            color: #666;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .list-item {
+            display: grid;
+            grid-template-columns: 40px 1fr 80px 80px;
+            gap: 10px;
+            padding: 12px 10px;
+            border-bottom: 1px solid #e0e0e0;
+            align-items: center;
+        }
+
+        .list-item:hover {
+            background-color: #f9f9f9;
+        }
+
+        .list-item:last-child {
+            border-bottom: none;
+        }
+
+        .checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .waybill-number {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .select-button, .delete-button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .select-button {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .delete-button {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .empty-message {
+            padding: 40px;
+            text-align: center;
+            color: #999;
+            font-size: 14px;
+        }
+
+        .reset-button {
+            width: 100%;
+            padding: 15px;
+            margin-top: 20px;
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .reset-button:hover {
+            background-color: #5a6268;
+        }
+
+        .log-section {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .log-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .log-entry {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+            font-family: monospace;
+        }
+
+        .log-entry.success {
+            color: #28a745;
+        }
+
+        .log-entry.error {
+            color: #dc3545;
+        }
+
+        .log-entry.info {
+            color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-title">대량 집하 처리</div>
+            <div class="header-icons">
+                <span class="icon">📄</span>
+                <span class="icon">🔔</span>
+                <span class="icon">☰</span>
+            </div>
+        </div>
+
+        <div class="instruction">
+            <span>대량건 누락 발생시 동기화 버튼 클릭</span>
+            <span class="sync-icon">🔄</span>
+        </div>
+
+        <div class="input-section">
+            <label class="input-label">운송장 번호</label>
+            <div class="input-container">
+                <input type="text" 
+                       id="waybillInput" 
+                       class="waybill-input" 
+                       placeholder="운송장 번호를 입력하세요."
+                       autocomplete="off">
+                <span class="camera-icon">📷</span>
+                <button class="enter-button" id="enterButton">입력</button>
+            </div>
+        </div>
+
+        <div class="counters">
+            <span class="counter-item">SO <span id="soCount">0</span></span>
+            <span class="counter-item">AO <span id="aoCount">0</span></span>
+            <span class="counter-item">BO <span id="boCount">0</span></span>
+            <span class="counter-item">CO <span id="coCount">0</span></span>
+            <span class="counter-item">DO <span id="doCount">0</span></span>
+            <span class="counter-item">EO <span id="eoCount">0</span></span>
+            <span class="counter-item total">합계 <span id="totalCount">0</span></span>
+        </div>
+
+        <div class="box-type-section">
+            <label class="input-label">박스타입</label>
+            <div class="box-type-container">
+                <select class="box-type-select" id="boxType">
+                    <option value="S">S</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                    <option value="D">D</option>
+                    <option value="E">E</option>
+                </select>
+                <div class="box-buttons">
+                    <button class="box-button">변경</button>
+                    <button class="box-button">삭제</button>
+                </div>
+            </div>
+            <div class="duplicate-info">
+                <span>✓</span>
+                <span>중복(<span id="duplicateCount">0</span>)</span>
+            </div>
+        </div>
+
+        <div class="list-header">
+            <div></div>
+            <div>운송장 번호</div>
+            <div>선택</div>
+            <div>삭제</div>
+        </div>
+
+        <div id="waybillList"></div>
+
+        <button class="reset-button" id="resetButton">리셋</button>
+
+        <div class="log-section">
+            <div class="log-title">키보드 이벤트 로그</div>
+            <div id="logContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        let waybillList = [];
+        let tabCount = 0;
+        let shiftTabCount = 0;
+        let lastKeyTime = 0;
+        const KEY_THRESHOLD = 100; // 100ms 이내 연속 키 입력
+
+        const waybillInput = document.getElementById('waybillInput');
+        const enterButton = document.getElementById('enterButton');
+        const resetButton = document.getElementById('resetButton');
+        const waybillListContainer = document.getElementById('waybillList');
+        const logContainer = document.getElementById('logContainer');
+
+        // 로그 추가 함수
+        function addLog(message, type = 'info') {
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logContainer.insertBefore(logEntry, logContainer.firstChild);
+            
+            // 로그가 너무 많으면 오래된 것 삭제
+            if (logContainer.children.length > 50) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+
+        // 카운터 업데이트
+        function updateCounters() {
+            const counts = { SO: 0, AO: 0, BO: 0, CO: 0, DO: 0, EO: 0 };
+            
+            waybillList.forEach(waybill => {
+                const firstChar = waybill.charAt(0).toUpperCase();
+                if (counts.hasOwnProperty(firstChar + 'O')) {
+                    counts[firstChar + 'O']++;
+                } else {
+                    counts.SO++;
+                }
+            });
+
+            document.getElementById('soCount').textContent = counts.SO;
+            document.getElementById('aoCount').textContent = counts.AO;
+            document.getElementById('boCount').textContent = counts.BO;
+            document.getElementById('coCount').textContent = counts.CO;
+            document.getElementById('doCount').textContent = counts.DO;
+            document.getElementById('eoCount').textContent = counts.EO;
+            document.getElementById('totalCount').textContent = waybillList.length;
+        }
+
+        // 리스트 렌더링
+        function renderList() {
+            if (waybillList.length === 0) {
+                waybillListContainer.innerHTML = '<div class="empty-message">집하 대상 화물이 등록되지 않았습니다.</div>';
+                return;
+            }
+
+            waybillListContainer.innerHTML = waybillList.map((waybill, index) => `
+                <div class="list-item">
+                    <input type="checkbox" class="checkbox">
+                    <div class="waybill-number">${waybill}</div>
+                    <button class="select-button" onclick="selectItem(${index})">선택</button>
+                    <button class="delete-button" onclick="deleteItem(${index})">삭제</button>
+                </div>
+            `).join('');
+        }
+
+        // 항목 선택
+        function selectItem(index) {
+            addLog(`항목 선택: ${waybillList[index]}`, 'info');
+        }
+
+        // 항목 삭제
+        function deleteItem(index) {
+            const waybill = waybillList[index];
+            waybillList.splice(index, 1);
+            renderList();
+            updateCounters();
+            addLog(`항목 삭제: ${waybill}`, 'error');
+        }
+
+        // 리셋 버튼
+        resetButton.addEventListener('click', () => {
+            waybillList = [];
+            renderList();
+            updateCounters();
+            waybillInput.value = '';
+            waybillInput.focus();
+            tabCount = 0;
+            shiftTabCount = 0;
+            addLog('리스트 리셋 완료', 'info');
+        });
+
+        // 입력 버튼 클릭
+        enterButton.addEventListener('click', () => {
+            addWaybill();
+        });
+
+        // Enter 키로 입력
+        waybillInput.addEventListener('keydown', (e) => {
+            const currentTime = Date.now();
+            const timeSinceLastKey = currentTime - lastKeyTime;
+            lastKeyTime = currentTime;
+
+            if (e.key === 'Tab' && !e.shiftKey) {
+                // Tab 키
+                tabCount++;
+                addLog(`Tab 키 입력 (${tabCount}번째)`, 'info');
+                
+                // Tab 2번 후 자동으로 Enter 버튼 클릭
+                if (tabCount === 2) {
+                    setTimeout(() => {
+                        addLog('Tab 2번 후 Enter 버튼 클릭', 'success');
+                        enterButton.click();
+                        tabCount = 0;
+                    }, 50);
+                }
+                e.preventDefault();
+            } else if (e.key === 'Tab' && e.shiftKey) {
+                // Shift + Tab 키
+                shiftTabCount++;
+                addLog(`Shift+Tab 키 입력 (${shiftTabCount}번째)`, 'info');
+                
+                // Shift+Tab 2번 후 입력 필드로 포커스 복귀
+                if (shiftTabCount === 2) {
+                    setTimeout(() => {
+                        waybillInput.focus();
+                        waybillInput.select();
+                        addLog('Shift+Tab 2번 후 입력 필드로 포커스 복귀', 'success');
+                        shiftTabCount = 0;
+                    }, 50);
+                }
+                e.preventDefault();
+            } else if (e.key === 'Enter') {
+                // Enter 키
+                addLog('Enter 키 입력', 'info');
+                addWaybill();
+                e.preventDefault();
+            }
+        });
+
+        // 송장번호 추가 함수
+        function addWaybill() {
+            const waybill = waybillInput.value.trim();
+            
+            if (!waybill) {
+                addLog('송장번호가 비어있습니다.', 'error');
+                return;
+            }
+
+            if (waybillList.includes(waybill)) {
+                addLog(`중복된 송장번호: ${waybill}`, 'error');
+                document.getElementById('duplicateCount').textContent = 
+                    parseInt(document.getElementById('duplicateCount').textContent) + 1;
+                return;
+            }
+
+            waybillList.push(waybill);
+            renderList();
+            updateCounters();
+            addLog(`송장번호 추가: ${waybill}`, 'success');
+            
+            // 입력 필드 초기화 및 포커스
+            waybillInput.value = '';
+            waybillInput.focus();
+            
+            // 카운터 초기화 (다음 입력을 위해)
+            tabCount = 0;
+            shiftTabCount = 0;
+        }
+
+        // 페이지 로드 시 입력 필드에 포커스
+        window.addEventListener('load', () => {
+            waybillInput.focus();
+            addLog('테스트 페이지 로드 완료', 'success');
+            addLog('ESP32 키 시퀀스 테스트: Tab 2번 -> Enter -> Shift+Tab 2번', 'info');
+        });
+
+        // 입력 필드 클릭 시 로그
+        waybillInput.addEventListener('focus', () => {
+            addLog('입력 필드 포커스', 'info');
+        });
+
+        // Enter 버튼 포커스 추적
+        enterButton.addEventListener('focus', () => {
+            addLog('입력 버튼 포커스', 'info');
+        });
+    </script>
+</body>
+</html>
+
