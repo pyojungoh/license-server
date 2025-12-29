@@ -221,7 +221,6 @@
             <button class="tab active" onclick="showTab('dashboard')">대시보드</button>
             <button class="tab" onclick="showTab('create')">사용자 생성</button>
             <button class="tab" onclick="showTab('list')">사용자 목록</button>
-            <button class="tab" onclick="showTab('mac')">MAC 주소 관리</button>
             <button class="tab" onclick="showTab('extend')">구독 연장</button>
         </div>
         
@@ -286,35 +285,6 @@
             <h2>사용자 목록</h2>
             <button onclick="loadUserList()" class="secondary">새로고침</button>
             <div id="user-list-container"></div>
-        </div>
-        
-        <!-- MAC 주소 관리 -->
-        <div id="mac" class="tab-content">
-            <h2>MAC 주소 관리</h2>
-            <form id="mac-form">
-                <div class="form-group">
-                    <label>사용자 ID *</label>
-                    <input type="text" id="mac_user_id" required placeholder="사용자 ID 입력">
-                </div>
-                <div class="form-group">
-                    <label>MAC 주소 *</label>
-                    <input type="text" id="mac_address" required placeholder="AA:BB:CC:DD:EE:FF" pattern="([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}">
-                    <small style="color: #666;">형식: AA:BB:CC:DD:EE:FF (대문자 권장)</small>
-                </div>
-                <div class="form-group">
-                    <label>기기 이름</label>
-                    <input type="text" id="device_name" placeholder="예: 아이폰, 갤럭시 등">
-                </div>
-                <button type="submit">MAC 주소 등록</button>
-            </form>
-            <div style="margin-top: 30px;">
-                <h3>등록된 MAC 주소 조회</h3>
-                <form id="mac-search-form" style="display: flex; gap: 10px; margin-bottom: 20px;">
-                    <input type="text" id="mac_search_user_id" placeholder="사용자 ID 입력" style="flex: 1;">
-                    <button type="submit">조회</button>
-                </form>
-                <div id="mac-list-container"></div>
-            </div>
         </div>
         
         <!-- 구독 연장 -->
@@ -424,59 +394,44 @@
             }
         });
         
-        // MAC 주소 등록
-        document.getElementById('mac-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
+        // MAC 주소 추가
+        async function addMacAddress(userId) {
+            const macAddress = prompt('MAC 주소를 입력하세요 (형식: AA:BB:CC:DD:EE:FF):');
+            if (!macAddress) return;
             
-            const macAddress = document.getElementById('mac_address').value.trim().toUpperCase();
-            
-            // MAC 주소 형식 검증
+            const macAddressUpper = macAddress.trim().toUpperCase();
             const macPattern = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/;
-            if (!macPattern.test(macAddress)) {
+            if (!macPattern.test(macAddressUpper)) {
                 showAlert('올바른 MAC 주소 형식이 아닙니다. (예: AA:BB:CC:DD:EE:FF)', 'error');
                 return;
             }
             
-            const data = {
-                admin_key: ADMIN_KEY,
-                user_id: document.getElementById('mac_user_id').value.trim(),
-                mac_address: macAddress,
-                device_name: document.getElementById('device_name').value.trim()
-            };
+            const deviceName = prompt('기기 이름을 입력하세요 (선택사항):') || '';
             
             try {
                 const response = await fetch(`${API_URL}/api/register_mac_address`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
+                    body: JSON.stringify({
+                        admin_key: ADMIN_KEY,
+                        user_id: userId,
+                        mac_address: macAddressUpper,
+                        device_name: deviceName.trim()
+                    })
                 });
                 
                 const result = await response.json();
                 
                 if (result.success) {
                     showAlert('MAC 주소가 등록되었습니다.', 'success');
-                    document.getElementById('mac-form').reset();
-                    // MAC 주소 목록 새로고침
-                    const searchUserId = document.getElementById('mac_search_user_id').value.trim();
-                    if (searchUserId) {
-                        loadMacAddressList(searchUserId);
-                    }
+                    loadUserList(); // 목록 새로고침
                 } else {
                     showAlert(result.message, 'error');
                 }
             } catch (error) {
                 showAlert('오류가 발생했습니다: ' + error.message, 'error');
             }
-        });
-        
-        // MAC 주소 조회
-        document.getElementById('mac-search-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const userId = document.getElementById('mac_search_user_id').value.trim();
-            if (userId) {
-                loadMacAddressList(userId);
-            }
-        });
+        }
         
         // MAC 주소 삭제
         async function deleteMacAddress(userId, macAddress) {
@@ -499,62 +454,12 @@
                 
                 if (result.success) {
                     showAlert('MAC 주소가 삭제되었습니다.', 'success');
-                    loadMacAddressList(userId);
+                    loadUserList(); // 목록 새로고침
                 } else {
                     showAlert(result.message, 'error');
                 }
             } catch (error) {
                 showAlert('오류가 발생했습니다: ' + error.message, 'error');
-            }
-        }
-        
-        // MAC 주소 목록 로드
-        async function loadMacAddressList(userId) {
-            try {
-                const response = await fetch(`${API_URL}/api/list_user_mac_addresses`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({user_id: userId})
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    const container = document.getElementById('mac-list-container');
-                    
-                    if (result.mac_addresses.length === 0) {
-                        container.innerHTML = '<p>등록된 MAC 주소가 없습니다.</p>';
-                        return;
-                    }
-                    
-                    let html = '<table><thead><tr><th>MAC 주소</th><th>기기 이름</th><th>등록일</th><th>상태</th><th>작업</th></tr></thead><tbody>';
-                    
-                    result.mac_addresses.forEach(mac => {
-                        const registeredDate = mac.registered_date ? new Date(mac.registered_date).toLocaleDateString('ko-KR') : '-';
-                        const statusBadge = mac.is_active ? '<span class="badge badge-active">활성</span>' : '<span class="badge badge-warning">비활성</span>';
-                        
-                        html += `
-                            <tr>
-                                <td><strong>${mac.mac_address}</strong></td>
-                                <td>${mac.device_name || '-'}</td>
-                                <td>${registeredDate}</td>
-                                <td>${statusBadge}</td>
-                                <td>
-                                    <button onclick="deleteMacAddress('${userId}', '${mac.mac_address}')" class="secondary" style="padding: 6px 12px; font-size: 14px;">
-                                        삭제
-                                    </button>
-                                </td>
-                            </tr>
-                        `;
-                    });
-                    
-                    html += '</tbody></table>';
-                    container.innerHTML = html;
-                } else {
-                    showAlert(result.message, 'error');
-                }
-            } catch (error) {
-                showAlert('MAC 주소 목록을 불러올 수 없습니다: ' + error.message, 'error');
             }
         }
         
@@ -696,9 +601,25 @@
                         return;
                     }
                     
-                    let html = '<table><thead><tr><th>사용자 ID</th><th>이름</th><th>이메일</th><th>만료일</th><th>상태</th><th>생성일</th><th>마지막 로그인</th></tr></thead><tbody>';
+                    // 각 사용자의 MAC 주소 목록도 함께 가져오기
+                    const usersWithMac = await Promise.all(result.users.map(async (user) => {
+                        try {
+                            const macResponse = await fetch(`${API_URL}/api/list_user_mac_addresses`, {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({user_id: user.user_id})
+                            });
+                            const macResult = await macResponse.json();
+                            user.mac_addresses = macResult.success ? macResult.mac_addresses : [];
+                        } catch (error) {
+                            user.mac_addresses = [];
+                        }
+                        return user;
+                    }));
                     
-                    result.users.forEach(user => {
+                    let html = '<table><thead><tr><th>사용자 ID</th><th>이름</th><th>이메일</th><th>만료일</th><th>상태</th><th>MAC 주소</th><th>생성일</th><th>마지막 로그인</th><th>작업</th></tr></thead><tbody>';
+                    
+                    usersWithMac.forEach(user => {
                         const expiryDate = user.expiry_date ? new Date(user.expiry_date) : null;
                         const isExpired = expiryDate ? expiryDate < new Date() : false;
                         const isActive = user.is_active !== false;
@@ -716,6 +637,21 @@
                         const createdDate = user.created_date ? new Date(user.created_date).toLocaleDateString('ko-KR') : '-';
                         const lastLogin = user.last_login ? new Date(user.last_login).toLocaleDateString('ko-KR') : '-';
                         
+                        // MAC 주소 목록 표시
+                        let macHtml = '';
+                        if (user.mac_addresses && user.mac_addresses.length > 0) {
+                            user.mac_addresses.forEach((mac, index) => {
+                                const deviceName = mac.device_name ? ` (${mac.device_name})` : '';
+                                const activeBadge = mac.is_active ? '<span class="badge badge-active" style="font-size: 10px; margin-left: 5px;">활성</span>' : '<span class="badge badge-warning" style="font-size: 10px; margin-left: 5px;">비활성</span>';
+                                macHtml += `<div style="margin: 3px 0;">
+                                    <span>${mac.mac_address}${deviceName}${activeBadge}</span>
+                                    <button onclick="deleteMacAddress('${user.user_id}', '${mac.mac_address}')" class="secondary" style="padding: 2px 8px; font-size: 11px; margin-left: 5px;">삭제</button>
+                                </div>`;
+                            });
+                        } else {
+                            macHtml = '<span style="color: #999;">등록된 MAC 주소 없음</span>';
+                        }
+                        
                         html += `
                             <tr>
                                 <td><strong>${user.user_id}</strong></td>
@@ -723,8 +659,15 @@
                                 <td>${user.email || '-'}</td>
                                 <td>${expiryDisplay}</td>
                                 <td>${statusBadge}</td>
+                                <td style="max-width: 300px;">
+                                    ${macHtml}
+                                    <button onclick="addMacAddress('${user.user_id}')" class="secondary" style="padding: 4px 8px; font-size: 12px; margin-top: 5px;">
+                                        MAC 주소 추가
+                                    </button>
+                                </td>
                                 <td>${createdDate}</td>
                                 <td>${lastLogin}</td>
+                                <td>-</td>
                             </tr>
                         `;
                     });
