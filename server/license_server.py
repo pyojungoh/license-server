@@ -1512,10 +1512,66 @@ def user_login():
             return jsonify({'success': False, 'message': '비활성화된 계정입니다. 관리자에게 문의하세요.'}), 400
         
         now = datetime.datetime.now()
+        
+        # PC 프로그램 로그인 (UUID 없음): 단순 인증만 수행, 토큰 발급 안 함
+        if not is_mobile_app:
+            # last_login만 업데이트
+            if USE_POSTGRESQL:
+                cursor.execute("UPDATE users SET last_login = %s WHERE user_id = %s", (now, user_id))
+            else:
+                cursor.execute("UPDATE users SET last_login = ? WHERE user_id = ?", (now.isoformat(), user_id))
+            
+            # 구독 정보 조회
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    SELECT expiry_date FROM user_subscriptions 
+                    WHERE user_id = %s AND is_active = TRUE
+                    ORDER BY expiry_date DESC LIMIT 1
+                """, (user_id,))
+            else:
+                cursor.execute("""
+                    SELECT expiry_date FROM user_subscriptions 
+                    WHERE user_id = ? AND is_active = 1
+                    ORDER BY expiry_date DESC LIMIT 1
+                """, (user_id,))
+            
+            sub_data = cursor.fetchone()
+            expiry_date = None
+            if sub_data:
+                try:
+                    if USE_POSTGRESQL:
+                        expiry_date_val = sub_data.get('expiry_date')
+                    else:
+                        expiry_date_val = sub_data[0] if len(sub_data) > 0 else None
+                    
+                    if expiry_date_val:
+                        if isinstance(expiry_date_val, str):
+                            expiry_date = datetime.datetime.fromisoformat(expiry_date_val)
+                        else:
+                            expiry_date = expiry_date_val
+                except (IndexError, TypeError, ValueError):
+                    expiry_date = None
+            
+            conn.commit()
+            conn.close()
+            
+            # PC 프로그램 로그인 응답 (토큰 없음)
+            return jsonify({
+                'success': True,
+                'message': '로그인 성공',
+                'user_info': {
+                    'user_id': user_id,
+                    'name': name,
+                    'email': email,
+                    'expiry_date': expiry_date.isoformat() if expiry_date else None,
+                    'is_active': True
+                }
+            })
+        
+        # 모바일 앱 로그인 (UUID 있음): 기기 등록 및 토큰 발급
         access_token = None
         expires_at = None
         
-        # PC 프로그램 로그인 (UUID 없음) vs 모바일 앱 로그인 (UUID 있음)
         if is_mobile_app:
             # 모바일 앱 로그인: 기기 등록 및 토큰 발급
             
