@@ -408,8 +408,19 @@ class HanjinAutomationApp:
                 messagebox.showerror("오류", error_msg)
                 return False
             
-            # MAC 주소 확인
-            mac_address = controller.get_connected_mac_address()
+            # MAC 주소 확인 (로그 콜백 사용)
+            self.log("ESP32에 MAC 주소 요청 전송 중...")
+            mac_address, response_messages = controller.get_connected_mac_address(
+                log_callback=lambda msg: self.log(f"[ESP32] {msg}")
+            )
+            
+            if response_messages:
+                self.log(f"ESP32 응답 메시지 수신: {len(response_messages)}개")
+                for msg in response_messages:
+                    self.log(f"  → {msg}")
+            else:
+                self.log("ESP32로부터 응답 없음")
+            
             controller.disconnect()
             
             # MAC 주소 형식 정규화 (대문자, 콜론 포함)
@@ -706,7 +717,9 @@ class HanjinAutomationApp:
                 # MAC 주소 다시 확인
                 mac_address = None
                 if controller.is_connected():
-                    mac_address = controller.get_connected_mac_address()
+                    mac_address, _ = controller.get_connected_mac_address(
+                        log_callback=lambda msg: self.log(f"[ESP32] {msg}")
+                    )
                 
                 hardware_id = get_hardware_id()
                 success, msg = self.user_auth_manager.record_usage(

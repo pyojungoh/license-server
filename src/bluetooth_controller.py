@@ -97,28 +97,40 @@ class BluetoothController:
         """
         return self.serial_conn is not None and self.serial_conn.is_open
     
-    def get_connected_mac_address(self) -> Optional[str]:
+    def get_connected_mac_address(self, log_callback=None) -> tuple[Optional[str], list[str]]:
         """
         ESP32를 통해 연결된 모바일 기기의 MAC 주소 확인
         
+        Args:
+            log_callback: 로그 메시지를 전달할 콜백 함수 (선택사항)
+        
         Returns:
+            (MAC 주소, 응답 메시지 리스트) 튜플
             MAC 주소 (예: "AA:BB:CC:DD:EE:FF") 또는 None
+            응답 메시지 리스트는 모든 ESP32 응답을 포함
         """
         if not self.serial_conn or not self.serial_conn.is_open:
-            logger.error("BLT AI 로봇이 연결되지 않았습니다.")
-            return None
+            msg = "BLT AI 로봇이 연결되지 않았습니다."
+            logger.error(msg)
+            if log_callback:
+                log_callback(msg)
+            return None, []
         
         try:
             # 기존 버퍼 비우기
             self.serial_conn.reset_input_buffer()
+            if log_callback:
+                log_callback("ESP32에 MAC 주소 요청 전송 중...")
             
             # "GET_CONNECTED_MAC" 명령 전송
             command = "GET_CONNECTED_MAC\n"
             self.serial_conn.write(command.encode('utf-8'))
             self.serial_conn.flush()
+            if log_callback:
+                log_callback(f"ESP32 명령 전송: GET_CONNECTED_MAC")
             
-            # 응답 대기 (최대 2초)
-            timeout_time = time.time() + 2.0
+            # 응답 대기 (최대 3초)
+            timeout_time = time.time() + 3.0
             response_lines = []
             
             while time.time() < timeout_time:
@@ -126,6 +138,8 @@ class BluetoothController:
                     line = self.serial_conn.readline().decode('utf-8', errors='ignore').strip()
                     if line:
                         response_lines.append(line)
+                        if log_callback:
+                            log_callback(f"ESP32 응답: {line}")
                         logger.debug(f"ESP32 응답: {line}")
                         
                         # "MAC:" 접두사가 있는 경우 처리
@@ -136,22 +150,34 @@ class BluetoothController:
                                 # MAC 주소 추출 (공백 제거, 대문자로 변환)
                                 mac = mac_part.replace(' ', '').replace('-', ':').upper()
                                 if len(mac) == 17:  # MAC 주소 길이 확인
-                                    logger.info(f"MAC 주소 수신: {mac}")
-                                    return mac
+                                    msg = f"MAC 주소 수신: {mac}"
+                                    logger.info(msg)
+                                    if log_callback:
+                                        log_callback(msg)
+                                    return mac, response_lines
                         # "MAC:" 접두사 없이 MAC 주소만 있는 경우
                         elif ':' in line and len(line.split(':')) == 6:
                             mac = line.replace(' ', '').replace('-', ':').upper()
                             if len(mac) == 17:
-                                logger.info(f"MAC 주소 수신: {mac}")
-                                return mac
+                                msg = f"MAC 주소 수신: {mac}"
+                                logger.info(msg)
+                                if log_callback:
+                                    log_callback(msg)
+                                return mac, response_lines
                 time.sleep(0.1)
             
-            logger.warning(f"MAC 주소 수신 타임아웃. 응답: {response_lines}")
-            return None
+            msg = f"MAC 주소 수신 타임아웃 (3초). 받은 응답: {response_lines if response_lines else '없음'}"
+            logger.warning(msg)
+            if log_callback:
+                log_callback(msg)
+            return None, response_lines
             
         except Exception as e:
-            logger.error(f"MAC 주소 확인 실패: {e}")
-            return None
+            msg = f"MAC 주소 확인 실패: {e}"
+            logger.error(msg)
+            if log_callback:
+                log_callback(msg)
+            return None, []
     
     def __enter__(self):
         """컨텍스트 매니저 진입"""
