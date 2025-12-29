@@ -382,18 +382,48 @@ class HanjinAutomationApp:
             return False
         
         try:
+            # 먼저 등록된 MAC 주소 목록 가져오기
+            import requests
+            server_url = self.config.get("license_server", {}).get("url", "http://localhost:5000")
+            try:
+                mac_response = requests.post(
+                    f"{server_url}/api/list_user_mac_addresses",
+                    json={"user_id": self.current_user_id},
+                    timeout=5
+                )
+                registered_macs = []
+                if mac_response.status_code == 200:
+                    mac_data = mac_response.json()
+                    if mac_data.get('success'):
+                        registered_macs = [mac.get('mac_address', '').upper() for mac in mac_data.get('mac_addresses', [])]
+            except:
+                registered_macs = []
+            
             # ESP32 연결
             controller = BluetoothController(port=port, baudrate=115200)
             if not controller.connect():
-                messagebox.showerror("오류", "ESP32 연결에 실패했습니다.")
+                error_msg = "ESP32 연결에 실패했습니다."
+                if registered_macs:
+                    error_msg += f"\n\n등록된 MAC 주소 목록:\n" + "\n".join([f"  - {mac}" for mac in registered_macs])
+                messagebox.showerror("오류", error_msg)
                 return False
             
             # MAC 주소 확인
             mac_address = controller.get_connected_mac_address()
             controller.disconnect()
             
-            if not mac_address:
-                messagebox.showerror("오류", "MAC 주소를 확인할 수 없습니다.\nESP32와 블루투스 연결을 확인하세요.")
+            # MAC 주소 형식 정규화 (대문자, 콜론 포함)
+            if mac_address:
+                mac_address = mac_address.upper().replace(' ', '').replace('-', ':')
+                # 콜론이 없으면 추가
+                if ':' not in mac_address and len(mac_address) == 12:
+                    mac_address = ':'.join([mac_address[i:i+2] for i in range(0, 12, 2)])
+            
+            if not mac_address or mac_address == "00:00:00:00:00:00":
+                error_msg = "MAC 주소를 확인할 수 없습니다.\nESP32와 블루투스 연결을 확인하세요."
+                if registered_macs:
+                    error_msg += f"\n\n등록된 MAC 주소 목록:\n" + "\n".join([f"  - {mac}" for mac in registered_macs])
+                messagebox.showerror("오류", error_msg)
                 return False
             
             # 서버에서 MAC 주소 검증
@@ -405,14 +435,45 @@ class HanjinAutomationApp:
             )
             
             if not allowed:
-                messagebox.showerror("등록되지 않은 사용자", 
-                    f"{message}\n\n연결된 휴대폰의 MAC 주소: {mac_address}\n관리자에게 문의하여 MAC 주소를 등록해주세요.")
+                error_msg = f"{message}\n\n"
+                error_msg += f"연결된 휴대폰의 MAC 주소: {mac_address}\n\n"
+                
+                if registered_macs:
+                    error_msg += f"등록된 MAC 주소 목록:\n"
+                    for registered_mac in registered_macs:
+                        if registered_mac == mac_address:
+                            error_msg += f"  ✓ {registered_mac} (일치)\n"
+                        else:
+                            # 대소문자 비교
+                            if registered_mac.upper() == mac_address.upper():
+                                error_msg += f"  ⚠ {registered_mac} (대소문자 차이)\n"
+                            else:
+                                error_msg += f"  - {registered_mac}\n"
+                    error_msg += f"\n현재 MAC 주소와 등록된 MAC 주소가 일치하지 않습니다.\n"
+                else:
+                    error_msg += f"등록된 MAC 주소가 없습니다.\n"
+                
+                error_msg += "\n관리자에게 문의하여 MAC 주소를 등록해주세요."
+                
+                messagebox.showerror("등록되지 않은 사용자", error_msg)
                 return False
+            
+            # 성공 메시지 (선택사항)
+            success_msg = f"MAC 주소 검증 성공!\n\n연결된 MAC 주소: {mac_address}"
+            if registered_macs:
+                success_msg += f"\n\n등록된 MAC 주소와 일치합니다."
+            messagebox.showinfo("검증 성공", success_msg)
             
             return True
             
         except Exception as e:
-            messagebox.showerror("오류", f"MAC 주소 검증 중 오류가 발생했습니다:\n{e}")
+            error_msg = f"MAC 주소 검증 중 오류가 발생했습니다:\n{e}"
+            try:
+                if registered_macs:
+                    error_msg += f"\n\n등록된 MAC 주소 목록:\n" + "\n".join([f"  - {mac}" for mac in registered_macs])
+            except:
+                pass
+            messagebox.showerror("오류", error_msg)
             return False
     
     def check_bluetooth_status(self):

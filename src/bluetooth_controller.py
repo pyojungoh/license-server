@@ -126,16 +126,27 @@ class BluetoothController:
                     line = self.serial_conn.readline().decode('utf-8', errors='ignore').strip()
                     if line:
                         response_lines.append(line)
-                        # MAC 주소 형식 확인 (XX:XX:XX:XX:XX:XX)
-                        if ':' in line and len(line.split(':')) == 6:
-                            # MAC 주소 추출 (공백 제거, 대문자로 변환)
-                            mac = line.replace(' ', '').upper()
-                            if len(mac) == 17:  # MAC 주소 길이 확인
+                        logger.debug(f"ESP32 응답: {line}")
+                        
+                        # "MAC:" 접두사가 있는 경우 처리
+                        if line.startswith('MAC:'):
+                            mac_part = line[4:].strip()  # "MAC:" 제거
+                            # MAC 주소 형식 확인 (XX:XX:XX:XX:XX:XX)
+                            if ':' in mac_part and len(mac_part.split(':')) == 6:
+                                # MAC 주소 추출 (공백 제거, 대문자로 변환)
+                                mac = mac_part.replace(' ', '').replace('-', ':').upper()
+                                if len(mac) == 17:  # MAC 주소 길이 확인
+                                    logger.info(f"MAC 주소 수신: {mac}")
+                                    return mac
+                        # "MAC:" 접두사 없이 MAC 주소만 있는 경우
+                        elif ':' in line and len(line.split(':')) == 6:
+                            mac = line.replace(' ', '').replace('-', ':').upper()
+                            if len(mac) == 17:
                                 logger.info(f"MAC 주소 수신: {mac}")
                                 return mac
                 time.sleep(0.1)
             
-            logger.warning("MAC 주소 수신 타임아웃 또는 형식 오류")
+            logger.warning(f"MAC 주소 수신 타임아웃. 응답: {response_lines}")
             return None
             
         except Exception as e:
