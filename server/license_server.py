@@ -1438,11 +1438,15 @@ def record_usage():
 def user_login():
     """
     사용자 로그인 (PC 프로그램 및 모바일 앱용)
-    - PC 프로그램: device_uuid 없이 로그인 가능
+    - PC 프로그램: device_uuid 없이 로그인 (단순 인증만 수행)
     - 모바일 앱: device_uuid 필요 (1인 1기기 정책), 액세스 토큰 발급
     """
+    conn = None
     try:
         data = request.json
+        if not data:
+            return jsonify({'success': False, 'message': '요청 데이터가 없습니다.'}), 400
+        
         user_id = data.get('user_id', '').strip()
         password = data.get('password', '')
         device_uuid = data.get('device_uuid', '').strip()  # 모바일 기기 UUID
@@ -1462,43 +1466,49 @@ def user_login():
         
         # 사용자 조회
         if USE_POSTGRESQL:
-            cursor.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            cursor.execute("SELECT user_id, password_hash, name, email, is_active FROM users WHERE user_id = %s", (user_id,))
         else:
-            cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+            cursor.execute("SELECT user_id, password_hash, name, email, is_active FROM users WHERE user_id = ?", (user_id,))
         
         user_data = cursor.fetchone()
         
         if not user_data:
-            conn.close()
+            if conn:
+                conn.close()
             return jsonify({'success': False, 'message': '아이디 또는 비밀번호가 잘못되었습니다.'}), 400
         
-        # 비밀번호 확인
+        # 비밀번호 확인 (컬럼명 직접 지정으로 안전하게 처리)
         if USE_POSTGRESQL:
-            password_hash = user_data.get('password_hash')
-            is_active = user_data.get('is_active')
-            name = user_data.get('name')
-            email = user_data.get('email')
+            password_hash = user_data.get('password_hash') if user_data else None
+            is_active = user_data.get('is_active') if user_data else False
+            name = user_data.get('name') if user_data else ''
+            email = user_data.get('email') if user_data else ''
         else:
-            # SQLite: 튜플 인덱싱 (컬럼 순서: id, user_id, password_hash, name, email, phone, hardware_id, created_date, last_login, is_active)
+            # SQLite: SELECT에서 지정한 순서대로 (user_id, password_hash, name, email, is_active)
             try:
-                if len(user_data) < 10:
+                password_hash = user_data[1] if len(user_data) > 1 else None
+                name = user_data[2] if len(user_data) > 2 else ''
+                email = user_data[3] if len(user_data) > 3 else ''
+                is_active = bool(user_data[4] if len(user_data) > 4 else False)
+            except (IndexError, TypeError):
+                if conn:
                     conn.close()
-                    return jsonify({'success': False, 'message': '사용자 데이터가 불완전합니다.'}), 500
-                password_hash = user_data[2]  # password_hash 컬럼 (인덱스 2)
-                name = user_data[3]  # name 컬럼 (인덱스 3)
-                email = user_data[4]  # email 컬럼 (인덱스 4)
-                is_active = bool(user_data[9])  # is_active 컬럼 (인덱스 9)
-            except (IndexError, TypeError) as e:
+                return jsonify({'success': False, 'message': '사용자 데이터 오류가 발생했습니다.'}), 500
+        
+        if not password_hash:
+            if conn:
                 conn.close()
-                return jsonify({'success': False, 'message': f'사용자 데이터 오류: {str(e)}'}), 500
+            return jsonify({'success': False, 'message': '아이디 또는 비밀번호가 잘못되었습니다.'}), 400
         
         if not verify_password(password, password_hash):
-            conn.close()
+            if conn:
+                conn.close()
             return jsonify({'success': False, 'message': '아이디 또는 비밀번호가 잘못되었습니다.'}), 400
         
         # 계정 활성화 확인
         if not is_active:
-            conn.close()
+            if conn:
+                conn.close()
             return jsonify({'success': False, 'message': '비활성화된 계정입니다. 관리자에게 문의하세요.'}), 400
         
         now = datetime.datetime.now()
@@ -1638,10 +1648,12 @@ def user_login():
         conn.commit()
         conn.close()
         
-        # 응답 생성
-        response_data = {
+        # 모바일 앱 로그인 응답 (토큰 포함)
+        return jsonify({
             'success': True,
             'message': '로그인 성공',
+            'access_token': access_token,
+            'expires_at': expires_at.isoformat(),
             'user_info': {
                 'user_id': user_id,
                 'name': name,
@@ -1649,15 +1661,7 @@ def user_login():
                 'expiry_date': expiry_date.isoformat() if expiry_date else None,
                 'is_active': True
             }
-        }
-        
-        # 모바일 앱인 경우만 access_token 포함
-        if is_mobile_app and access_token:
-            response_data['access_token'] = access_token
-            response_data['expires_at'] = expires_at.isoformat()
-        
-        print(f"[LOGIN] User {user_id} logged in successfully. Token generated: {access_token[:20]}...")
-        return jsonify(response_data)
+        })
     
     except Exception as e:
         import traceback
