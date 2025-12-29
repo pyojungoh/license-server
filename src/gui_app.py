@@ -12,6 +12,7 @@ from pathlib import Path
 import sys
 import json
 import datetime
+import re
 
 # 프로젝트 루트를 경로에 추가
 sys.path.insert(0, str(Path(__file__).parent))
