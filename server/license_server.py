@@ -2760,6 +2760,11 @@ def extend_user_subscription():
             INSERT INTO user_payments (user_id, payment_date, amount, period_days, payment_method, note)
             VALUES (%s, %s, %s, %s, %s, %s)
         """, (user_id, now, amount, period_days, payment_method, note))
+        
+        # users 테이블의 is_active를 True로 변경 (구독 연장 = 활성화)
+        cursor.execute("""
+            UPDATE users SET is_active = TRUE WHERE user_id = %s
+        """, (user_id,))
     else:
         cursor.execute("""
             INSERT INTO user_subscriptions (user_id, subscription_type, start_date, expiry_date, is_active)
@@ -2770,6 +2775,11 @@ def extend_user_subscription():
             INSERT INTO user_payments (user_id, payment_date, amount, period_days, payment_method, note)
             VALUES (?, ?, ?, ?, ?, ?)
         """, (user_id, now.isoformat(), amount, period_days, payment_method, note))
+        
+        # users 테이블의 is_active를 1로 변경 (구독 연장 = 활성화)
+        cursor.execute("""
+            UPDATE users SET is_active = 1 WHERE user_id = ?
+        """, (user_id,))
     
     conn.commit()
     conn.close()
