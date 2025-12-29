@@ -42,6 +42,7 @@ class HanjinAutomationApp:
         self.is_running = False
         self.config_file = Path(__file__).parent.parent / "config" / "settings.json"
         self.loaded_invoices = []  # 로드된 송장번호 리스트
+        self.auto_logout_timer = None  # 자동 로그아웃 타이머
         
         # 설정 로드 (라이선스 서버 URL 필요)
         self.config = self.load_config()
@@ -51,6 +52,9 @@ class HanjinAutomationApp:
         self.user_auth_manager = UserAuthManager(server_url=server_url)
         self.current_user_id = None
         self.current_user_info = None
+        
+        # 세션 파일 삭제 (프로그램 재시작 시 항상 로그인 강제)
+        # clear_session()은 show_login에서 자동으로 처리됨 (세션 확인 코드 제거)
         
         # 로그인 화면 표시
         if not self.show_login():
@@ -64,6 +68,9 @@ class HanjinAutomationApp:
         
         # 블루투스 상태 확인 (주기적)
         self.check_bluetooth_status()
+        
+        # 1시간 후 자동 로그아웃 타이머 시작
+        self.start_auto_logout_timer()
     
     def log(self, message):
         """로그 메시지 추가 (create_widgets 이후에 사용 가능)"""
@@ -101,24 +108,13 @@ class HanjinAutomationApp:
             messagebox.showerror("오류", f"설정 저장 실패: {e}")
     
     def show_login(self):
-        """로그인 화면 표시"""
-        # 세션 확인 (자동 로그인)
-        session_data = self.user_auth_manager.session_data
-        if session_data:
-            user_id = session_data.get('user_id')
-            if user_id:
-                # 세션이 있으면 자동으로 사용자 정보 로드
-                user_info = self.user_auth_manager.get_user_info(user_id)
-                if user_info and user_info.get('is_active'):
-                    self.current_user_id = user_id
-                    self.current_user_info = user_info
-                    # MAC 주소 검증은 나중에 수행
-                    return True
+        """로그인 화면 표시 (항상 로그인 창 표시)"""
+        # 세션 확인 제거 - 항상 로그인 창 표시
         
         # 로그인 창 표시
         login_window = tk.Toplevel(self.root)
-        login_window.title("로그인")
-        login_window.geometry("400x250")
+        login_window.title("로그인 / 회원가입")
+        login_window.geometry("400x600")
         login_window.resizable(False, False)
         login_window.transient(self.root)
         login_window.grab_set()
@@ -126,24 +122,32 @@ class HanjinAutomationApp:
         # 창을 화면 중앙에 배치
         login_window.update_idletasks()
         x = (login_window.winfo_screenwidth() // 2) - (400 // 2)
-        y = (login_window.winfo_screenheight() // 2) - (250 // 2)
-        login_window.geometry(f"400x250+{x}+{y}")
+        y = (login_window.winfo_screenheight() // 2) - (600 // 2)
+        login_window.geometry(f"400x600+{x}+{y}")
         
-        ttk.Label(login_window, text="로그인", font=("맑은 고딕", 16, "bold")).pack(pady=15)
+        # Notebook (탭) 생성
+        notebook = ttk.Notebook(login_window)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
-        ttk.Label(login_window, text="아이디:").pack(pady=5)
+        # === 로그인 탭 ===
+        login_frame = ttk.Frame(notebook, padding="20")
+        notebook.add(login_frame, text="로그인")
+        
+        ttk.Label(login_frame, text="로그인", font=("맑은 고딕", 16, "bold")).pack(pady=15)
+        
+        ttk.Label(login_frame, text="아이디:").pack(pady=5)
         user_id_var = tk.StringVar()
-        user_id_entry = ttk.Entry(login_window, textvariable=user_id_var, width=30)
+        user_id_entry = ttk.Entry(login_frame, textvariable=user_id_var, width=30)
         user_id_entry.pack(pady=5)
         user_id_entry.focus()
         
-        ttk.Label(login_window, text="비밀번호:").pack(pady=5)
+        ttk.Label(login_frame, text="비밀번호:").pack(pady=5)
         password_var = tk.StringVar()
-        password_entry = ttk.Entry(login_window, textvariable=password_var, width=30, show="*")
+        password_entry = ttk.Entry(login_frame, textvariable=password_var, width=30, show="*")
         password_entry.pack(pady=5)
         
-        status_label = ttk.Label(login_window, text="", foreground="red", wraplength=350)
-        status_label.pack(pady=10)
+        login_status_label = ttk.Label(login_frame, text="", foreground="red", wraplength=350)
+        login_status_label.pack(pady=10)
         
         login_success = [False]  # 클로저를 위한 리스트
         
@@ -152,10 +156,10 @@ class HanjinAutomationApp:
             password = password_var.get()
             
             if not user_id or not password:
-                status_label.config(text="아이디와 비밀번호를 입력하세요.", foreground="red")
+                login_status_label.config(text="아이디와 비밀번호를 입력하세요.", foreground="red")
                 return
             
-            status_label.config(text="로그인 중...", foreground="blue")
+            login_status_label.config(text="로그인 중...", foreground="blue")
             login_window.update()
             
             hardware_id = get_hardware_id()
@@ -167,7 +171,7 @@ class HanjinAutomationApp:
                 login_success[0] = True
                 login_window.destroy()
             else:
-                status_label.config(text=message, foreground="red")
+                login_status_label.config(text=message, foreground="red")
         
         def on_enter(event):
             do_login()
@@ -175,7 +179,77 @@ class HanjinAutomationApp:
         password_entry.bind('<Return>', on_enter)
         user_id_entry.bind('<Return>', lambda e: password_entry.focus())
         
-        ttk.Button(login_window, text="로그인", command=do_login, width=15).pack(pady=10)
+        ttk.Button(login_frame, text="로그인", command=do_login, width=15).pack(pady=10)
+        
+        # === 회원가입 탭 ===
+        register_frame = ttk.Frame(notebook, padding="20")
+        notebook.add(register_frame, text="회원가입")
+        
+        ttk.Label(register_frame, text="회원가입", font=("맑은 고딕", 16, "bold")).pack(pady=10)
+        
+        # 아이디
+        ttk.Label(register_frame, text="아이디 *:").pack(pady=5)
+        reg_user_id_var = tk.StringVar()
+        reg_user_id_entry = ttk.Entry(register_frame, textvariable=reg_user_id_var, width=30)
+        reg_user_id_entry.pack(pady=2)
+        
+        # 비밀번호
+        ttk.Label(register_frame, text="비밀번호 *:").pack(pady=5)
+        reg_password_var = tk.StringVar()
+        reg_password_entry = ttk.Entry(register_frame, textvariable=reg_password_var, width=30, show="*")
+        reg_password_entry.pack(pady=2)
+        
+        # 이름
+        ttk.Label(register_frame, text="이름 *:").pack(pady=5)
+        reg_name_var = tk.StringVar()
+        reg_name_entry = ttk.Entry(register_frame, textvariable=reg_name_var, width=30)
+        reg_name_entry.pack(pady=2)
+        
+        # 이메일
+        ttk.Label(register_frame, text="이메일:").pack(pady=5)
+        reg_email_var = tk.StringVar()
+        reg_email_entry = ttk.Entry(register_frame, textvariable=reg_email_var, width=30)
+        reg_email_entry.pack(pady=2)
+        
+        # 전화번호
+        ttk.Label(register_frame, text="전화번호:").pack(pady=5)
+        reg_phone_var = tk.StringVar()
+        reg_phone_entry = ttk.Entry(register_frame, textvariable=reg_phone_var, width=30)
+        reg_phone_entry.pack(pady=2)
+        
+        register_status_label = ttk.Label(register_frame, text="", foreground="red", wraplength=350)
+        register_status_label.pack(pady=10)
+        
+        def do_register():
+            user_id = reg_user_id_var.get().strip()
+            password = reg_password_var.get()
+            name = reg_name_var.get().strip()
+            email = reg_email_var.get().strip()
+            phone = reg_phone_var.get().strip()
+            
+            if not user_id or not password or not name:
+                register_status_label.config(text="아이디, 비밀번호, 이름을 입력하세요.", foreground="red")
+                return
+            
+            register_status_label.config(text="회원가입 중...", foreground="blue")
+            login_window.update()
+            
+            success, message = self.user_auth_manager.register(user_id, password, name, email, phone)
+            
+            if success:
+                register_status_label.config(text=message, foreground="green")
+                # 성공 시 로그인 탭으로 이동
+                notebook.select(0)
+                # 입력 필드 초기화
+                reg_user_id_var.set("")
+                reg_password_var.set("")
+                reg_name_var.set("")
+                reg_email_var.set("")
+                reg_phone_var.set("")
+            else:
+                register_status_label.config(text=message, foreground="red")
+        
+        ttk.Button(register_frame, text="회원가입", command=do_register, width=15).pack(pady=10)
         
         # 창이 닫힐 때까지 대기
         login_window.wait_window()
@@ -184,6 +258,17 @@ class HanjinAutomationApp:
     
     def create_widgets(self):
         """GUI 위젯 생성"""
+        # 메뉴바 생성
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+        
+        # 파일 메뉴
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="파일", menu=file_menu)
+        file_menu.add_command(label="로그아웃", command=lambda: self.perform_logout("로그아웃하시겠습니까?"))
+        file_menu.add_separator()
+        file_menu.add_command(label="종료", command=self.on_closing)
+        
         # 메인 프레임
         main_frame = ttk.Frame(self.root, padding="8")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -655,6 +740,9 @@ class HanjinAutomationApp:
             self.log("BLT AI 로봇 연결 성공!")
             self.controller = controller
             
+            # ESP32 시리얼 메시지 모니터링 시작
+            controller.start_serial_monitoring(log_callback=lambda msg: self.log(msg))
+            
             # 이미 로드된 엑셀 데이터 사용
             invoices = self.loaded_invoices
             total = len(invoices)
@@ -738,6 +826,89 @@ class HanjinAutomationApp:
                 self.controller.disconnect()
             self.automation_finished()
     
+    def start_auto_logout_timer(self):
+        """1시간 후 자동 로그아웃 타이머 시작"""
+        # 기존 타이머 취소
+        if self.auto_logout_timer:
+            self.root.after_cancel(self.auto_logout_timer)
+        
+        # 1시간 = 3600000 밀리초 후 자동 로그아웃
+        self.auto_logout_timer = self.root.after(3600000, self.auto_logout)
+        self.log("⏰ 1시간 후 자동 로그아웃 예약됨")
+    
+    def auto_logout(self):
+        """자동 로그아웃 실행"""
+        if self.current_user_id:
+            self.log("⏰ 1시간 경과 - 자동 로그아웃됩니다.")
+            self.perform_logout("세션이 만료되었습니다. 다시 로그인해주세요.")
+    
+    def perform_logout(self, message: str = "로그아웃되었습니다."):
+        """로그아웃 수행"""
+        # 확인 메시지 표시 (자동 로그아웃이 아닌 경우만)
+        if "세션이 만료" not in message:
+            if not messagebox.askyesno("로그아웃", message):
+                return
+        
+        # 자동 로그아웃 타이머 취소
+        if self.auto_logout_timer:
+            self.root.after_cancel(self.auto_logout_timer)
+            self.auto_logout_timer = None
+        
+        # 서버에 로그아웃 요청
+        if self.current_user_id:
+            try:
+                self.user_auth_manager.logout(self.current_user_id)
+            except:
+                pass
+        
+        # 세션 삭제
+        self.user_auth_manager.clear_session()
+        self.current_user_id = None
+        self.current_user_info = None
+        
+        # 자동 로그아웃이 아닌 경우에만 메시지 표시
+        if "세션이 만료" not in message:
+            messagebox.showinfo("로그아웃", "로그아웃되었습니다.")
+        
+        # GUI 위젯 모두 제거
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        
+        # 로그인 화면 다시 표시
+        if not self.show_login():
+            self.root.quit()
+            return
+        
+        # GUI 다시 생성
+        self.create_widgets()
+        self.refresh_ports()
+        self.check_bluetooth_status()
+        
+        # 자동 로그아웃 타이머 다시 시작
+        self.start_auto_logout_timer()
+    
+    def on_closing(self):
+        """프로그램 종료 시 정리"""
+        # 자동 로그아웃 타이머 취소
+        if self.auto_logout_timer:
+            self.root.after_cancel(self.auto_logout_timer)
+        
+        # 서버에 로그아웃 요청
+        if self.current_user_id:
+            try:
+                self.user_auth_manager.logout(self.current_user_id)
+            except:
+                pass
+        
+        # 세션 삭제
+        self.user_auth_manager.clear_session()
+        
+        # ESP32 연결 종료
+        if self.controller:
+            self.controller.disconnect()
+        
+        self.root.destroy()
+    
     def automation_finished(self):
         """자동화 완료 후 UI 업데이트"""
         self.is_running = False
@@ -753,6 +924,10 @@ def main():
     """메인 함수"""
     root = tk.Tk()
     app = HanjinAutomationApp(root)
+    
+    # 프로그램 종료 시 정리 함수 연결
+    root.protocol("WM_DELETE_WINDOW", app.on_closing)
+    
     root.mainloop()
 
 

@@ -50,12 +50,13 @@ class UserAuthManager:
             self.session_data = None
     
     def save_session(self, user_info: Dict):
-        """세션 정보 저장"""
+        """세션 정보 저장 (로그인 시간 포함)"""
+        now = datetime.datetime.now()
         session_data = {
             "user_id": user_info.get("user_id"),
             "name": user_info.get("name"),
             "email": user_info.get("email"),
-            "login_time": datetime.datetime.now().isoformat(),
+            "login_time": now.isoformat(),
             "expiry_date": user_info.get("expiry_date")
         }
         
@@ -64,6 +65,24 @@ class UserAuthManager:
             json.dump(session_data, f, indent=2, ensure_ascii=False)
         
         self.session_data = session_data
+    
+    def is_session_expired(self) -> bool:
+        """세션이 만료되었는지 확인 (1시간)"""
+        if not self.session_data:
+            return True
+        
+        login_time_str = self.session_data.get("login_time")
+        if not login_time_str:
+            return True
+        
+        try:
+            login_time = datetime.datetime.fromisoformat(login_time_str)
+            now = datetime.datetime.now()
+            elapsed = (now - login_time).total_seconds()
+            # 1시간 = 3600초
+            return elapsed >= 3600
+        except:
+            return True
     
     def clear_session(self):
         """세션 정보 삭제"""
@@ -238,6 +257,54 @@ class UserAuthManager:
         except Exception as e:
             logger.error(f"사용자 정보 조회 오류: {e}")
             return None
+    
+    def register(self, user_id: str, password: str, name: str, email: str = "", phone: str = "") -> Tuple[bool, str]:
+        """
+        회원가입
+        
+        Args:
+            user_id: 사용자 ID
+            password: 비밀번호
+            name: 이름
+            email: 이메일 (선택사항)
+            phone: 전화번호 (선택사항)
+            
+        Returns:
+            (성공 여부, 메시지)
+        """
+        try:
+            payload = {
+                "user_id": user_id,
+                "password": password,
+                "name": name,
+                "email": email,
+                "phone": phone
+            }
+            
+            response = requests.post(
+                f"{self.server_url}/api/register",
+                json=payload,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    logger.info(f"회원가입 성공: {user_id}")
+                    return True, data.get('message', '회원가입이 완료되었습니다.')
+                else:
+                    return False, data.get('message', '회원가입 실패')
+            else:
+                data = response.json()
+                return False, data.get('message', '서버 오류가 발생했습니다.')
+                
+        except requests.exceptions.ConnectionError:
+            return False, "서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요."
+        except requests.exceptions.Timeout:
+            return False, "서버 응답 시간이 초과되었습니다."
+        except Exception as e:
+            logger.error(f"회원가입 오류: {e}")
+            return False, f"오류가 발생했습니다: {str(e)}"
     
     def record_usage(self, user_id: str, total_invoices: int, success_count: int, fail_count: int, 
                      mac_address: Optional[str] = None, hardware_id: Optional[str] = None) -> Tuple[bool, str]:
