@@ -633,7 +633,27 @@
                             statusBadge = '<span class="badge badge-active">활성</span>';
                         }
                         
-                        const expiryDisplay = expiryDate ? expiryDate.toLocaleDateString('ko-KR') : '없음';
+                        // 만료일 및 남은 일수 계산
+                        let expiryDisplay = '없음';
+                        if (expiryDate) {
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            const expiry = new Date(expiryDate);
+                            expiry.setHours(0, 0, 0, 0);
+                            
+                            const diffTime = expiry - today;
+                            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                            
+                            const dateStr = expiry.toLocaleDateString('ko-KR');
+                            if (isExpired) {
+                                expiryDisplay = `${dateStr} <span style="color: #dc3545; font-weight: bold;">(만료)</span>`;
+                            } else if (diffDays <= 7) {
+                                expiryDisplay = `${dateStr} <span style="color: #ffc107; font-weight: bold;">(${diffDays}일 남음)</span>`;
+                            } else {
+                                expiryDisplay = `${dateStr} <span style="color: #28a745;">(${diffDays}일 남음)</span>`;
+                            }
+                        }
+                        
                         const createdDate = user.created_date ? new Date(user.created_date).toLocaleDateString('ko-KR') : '-';
                         const lastLogin = user.last_login ? new Date(user.last_login).toLocaleDateString('ko-KR') : '-';
                         
