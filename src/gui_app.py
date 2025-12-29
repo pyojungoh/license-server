@@ -160,18 +160,24 @@ class HanjinAutomationApp:
                 return
             
             login_status_label.config(text="로그인 중...", foreground="blue")
-            login_window.update()
+            login_window.update()  # UI 업데이트
             
-            hardware_id = get_hardware_id()
-            success, message, user_info = self.user_auth_manager.login(user_id, password, hardware_id)
-            
-            if success and user_info:
-                self.current_user_id = user_id
-                self.current_user_info = user_info
-                login_success[0] = True
-                login_window.destroy()
-            else:
-                login_status_label.config(text=message, foreground="red")
+            try:
+                hardware_id = get_hardware_id()
+                success, message, user_info = self.user_auth_manager.login(user_id, password, hardware_id)
+                
+                if success and user_info:
+                    self.current_user_id = user_id
+                    self.current_user_info = user_info
+                    login_success[0] = True
+                    login_window.destroy()
+                else:
+                    login_status_label.config(text=message, foreground="red")
+            except Exception as e:
+                import traceback
+                error_msg = f"로그인 처리 중 오류가 발생했습니다: {str(e)}"
+                login_status_label.config(text=error_msg, foreground="red")
+                print(f"로그인 오류:\n{traceback.format_exc()}")
         
         def on_enter(event):
             do_login()
