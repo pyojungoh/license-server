@@ -1463,146 +1463,146 @@ def user_login():
             return jsonify({'success': False, 'message': '기기 UUID가 필요합니다.'}), 400
         
         conn = get_db_connection()
-    if USE_POSTGRESQL:
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-    else:
-        cursor = conn.cursor()
-    
-    # 사용자 조회
-    if USE_POSTGRESQL:
-        cursor.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
-    else:
-        cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-    
-    user_data = cursor.fetchone()
-    
-    if not user_data:
-        conn.close()
-        return jsonify({'success': False, 'message': '아이디 또는 비밀번호가 잘못되었습니다.'}), 400
-    
-    # 비밀번호 확인
-    if USE_POSTGRESQL:
-        password_hash = user_data.get('password_hash')
-        is_active = user_data.get('is_active')
-        name = user_data.get('name')
-        email = user_data.get('email')
-    else:
-        password_hash = user_data[2]  # password_hash 컬럼
-        is_active = bool(user_data[9])  # is_active 컬럼
-        name = user_data[3]  # name 컬럼
-        email = user_data[4]  # email 컬럼
-    
-    if not verify_password(password, password_hash):
-        conn.close()
-        return jsonify({'success': False, 'message': '아이디 또는 비밀번호가 잘못되었습니다.'}), 400
-    
-    # 계정 활성화 확인
-    if not is_active:
-        conn.close()
-        return jsonify({'success': False, 'message': '비활성화된 계정입니다. 관리자에게 문의하세요.'}), 400
-    
-    # 기기 등록 여부 확인 (1인 1기기 정책)
-    if USE_POSTGRESQL:
-        cursor.execute("""
-            SELECT * FROM user_devices 
-            WHERE user_id = %s AND is_active = TRUE
-        """, (user_id,))
-    else:
-        cursor.execute("""
-            SELECT * FROM user_devices 
-            WHERE user_id = ? AND is_active = 1
-        """, (user_id,))
-    
-    registered_device = cursor.fetchone()
-    
-    if registered_device:
-        # 이미 등록된 기기가 있는 경우
         if USE_POSTGRESQL:
-            registered_uuid = registered_device.get('device_uuid')
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
         else:
-            registered_uuid = registered_device[2]  # device_uuid 컬럼
+            cursor = conn.cursor()
         
-        if registered_uuid != device_uuid:
-            # 다른 기기에서 로그인 시도 → 거부
-            conn.close()
-            return jsonify({
-                'success': False,
-                'message': '등록된 기기가 아닙니다. 다른 기기에서 로그인할 수 없습니다.',
-                'code': 'DEVICE_MISMATCH'
-            }), 403
+        # 사용자 조회
+        if USE_POSTGRESQL:
+            cursor.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
         else:
-            # 같은 기기에서 재로그인 → 기기 정보 업데이트
+            cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+        
+        user_data = cursor.fetchone()
+        
+        if not user_data:
+            conn.close()
+            return jsonify({'success': False, 'message': '아이디 또는 비밀번호가 잘못되었습니다.'}), 400
+        
+        # 비밀번호 확인
+        if USE_POSTGRESQL:
+            password_hash = user_data.get('password_hash')
+            is_active = user_data.get('is_active')
+            name = user_data.get('name')
+            email = user_data.get('email')
+        else:
+            password_hash = user_data[2]  # password_hash 컬럼
+            is_active = bool(user_data[9])  # is_active 컬럼
+            name = user_data[3]  # name 컬럼
+            email = user_data[4]  # email 컬럼
+        
+        if not verify_password(password, password_hash):
+            conn.close()
+            return jsonify({'success': False, 'message': '아이디 또는 비밀번호가 잘못되었습니다.'}), 400
+        
+        # 계정 활성화 확인
+        if not is_active:
+            conn.close()
+            return jsonify({'success': False, 'message': '비활성화된 계정입니다. 관리자에게 문의하세요.'}), 400
+        
+        # 기기 등록 여부 확인 (1인 1기기 정책)
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                SELECT * FROM user_devices 
+                WHERE user_id = %s AND is_active = TRUE
+            """, (user_id,))
+        else:
+            cursor.execute("""
+                SELECT * FROM user_devices 
+                WHERE user_id = ? AND is_active = 1
+            """, (user_id,))
+        
+        registered_device = cursor.fetchone()
+        
+        if registered_device:
+            # 이미 등록된 기기가 있는 경우
+            if USE_POSTGRESQL:
+                registered_uuid = registered_device.get('device_uuid')
+            else:
+                registered_uuid = registered_device[2]  # device_uuid 컬럼
+            
+            if registered_uuid != device_uuid:
+                # 다른 기기에서 로그인 시도 → 거부
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': '등록된 기기가 아닙니다. 다른 기기에서 로그인할 수 없습니다.',
+                    'code': 'DEVICE_MISMATCH'
+                }), 403
+            else:
+                # 같은 기기에서 재로그인 → 기기 정보 업데이트
+                if USE_POSTGRESQL:
+                    cursor.execute("""
+                        UPDATE user_devices 
+                        SET last_used = %s, device_name = %s
+                        WHERE user_id = %s AND device_uuid = %s
+                    """, (datetime.datetime.now(), device_name or None, user_id, device_uuid))
+                else:
+                    cursor.execute("""
+                        UPDATE user_devices 
+                        SET last_used = ?, device_name = ?
+                        WHERE user_id = ? AND device_uuid = ?
+                    """, (datetime.datetime.now().isoformat(), device_name or None, user_id, device_uuid))
+        else:
+            # 최초 로그인 → 기기 등록
             if USE_POSTGRESQL:
                 cursor.execute("""
-                    UPDATE user_devices 
-                    SET last_used = %s, device_name = %s
-                    WHERE user_id = %s AND device_uuid = %s
-                """, (datetime.datetime.now(), device_name or None, user_id, device_uuid))
+                    INSERT INTO user_devices (user_id, device_uuid, device_name, registered_date, last_used)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (user_id, device_uuid, device_name or None, datetime.datetime.now(), datetime.datetime.now()))
             else:
                 cursor.execute("""
-                    UPDATE user_devices 
-                    SET last_used = ?, device_name = ?
-                    WHERE user_id = ? AND device_uuid = ?
-                """, (datetime.datetime.now().isoformat(), device_name or None, user_id, device_uuid))
-    else:
-        # 최초 로그인 → 기기 등록
-        if USE_POSTGRESQL:
-            cursor.execute("""
-                INSERT INTO user_devices (user_id, device_uuid, device_name, registered_date, last_used)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (user_id, device_uuid, device_name or None, datetime.datetime.now(), datetime.datetime.now()))
-        else:
-            cursor.execute("""
-                INSERT INTO user_devices (user_id, device_uuid, device_name, registered_date, last_used)
-                VALUES (?, ?, ?, ?, ?)
-            """, (user_id, device_uuid, device_name or None, datetime.datetime.now().isoformat(), datetime.datetime.now().isoformat()))
-    
-    # 구독 정보 조회
-    if USE_POSTGRESQL:
-        cursor.execute("""
-            SELECT expiry_date FROM user_subscriptions 
-            WHERE user_id = %s AND is_active = TRUE
-            ORDER BY expiry_date DESC LIMIT 1
-        """, (user_id,))
-    else:
-        cursor.execute("""
-            SELECT expiry_date FROM user_subscriptions 
-            WHERE user_id = ? AND is_active = 1
-            ORDER BY expiry_date DESC LIMIT 1
-        """, (user_id,))
-    
-    sub_data = cursor.fetchone()
-    expiry_date = None
-    if sub_data:
-        if USE_POSTGRESQL:
-            expiry_date_val = sub_data.get('expiry_date')
-        else:
-            expiry_date_val = sub_data[0]
+                    INSERT INTO user_devices (user_id, device_uuid, device_name, registered_date, last_used)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (user_id, device_uuid, device_name or None, datetime.datetime.now().isoformat(), datetime.datetime.now().isoformat()))
         
-        if isinstance(expiry_date_val, str):
-            expiry_date = datetime.datetime.fromisoformat(expiry_date_val)
+        # 구독 정보 조회
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                SELECT expiry_date FROM user_subscriptions 
+                WHERE user_id = %s AND is_active = TRUE
+                ORDER BY expiry_date DESC LIMIT 1
+            """, (user_id,))
         else:
-            expiry_date = expiry_date_val
-    
-    # 기존 토큰 비활성화 (새 토큰 발급 전)
-    if USE_POSTGRESQL:
-        cursor.execute("""
-            UPDATE user_access_tokens 
-            SET is_active = FALSE 
-            WHERE user_id = %s AND device_uuid = %s AND is_active = TRUE
-        """, (user_id, device_uuid))
-    else:
-        cursor.execute("""
-            UPDATE user_access_tokens 
-            SET is_active = 0 
-            WHERE user_id = ? AND device_uuid = ? AND is_active = 1
-        """, (user_id, device_uuid))
-    
-    # 액세스 토큰 생성
-    access_token = generate_access_token()
-    token_hash = hash_token(access_token)
-    now = datetime.datetime.now()
-    expires_at = now + datetime.timedelta(days=7)  # 7일 유효
+            cursor.execute("""
+                SELECT expiry_date FROM user_subscriptions 
+                WHERE user_id = ? AND is_active = 1
+                ORDER BY expiry_date DESC LIMIT 1
+            """, (user_id,))
+        
+        sub_data = cursor.fetchone()
+        expiry_date = None
+        if sub_data:
+            if USE_POSTGRESQL:
+                expiry_date_val = sub_data.get('expiry_date')
+            else:
+                expiry_date_val = sub_data[0]
+            
+            if isinstance(expiry_date_val, str):
+                expiry_date = datetime.datetime.fromisoformat(expiry_date_val)
+            else:
+                expiry_date = expiry_date_val
+        
+        # 기존 토큰 비활성화 (새 토큰 발급 전)
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                UPDATE user_access_tokens 
+                SET is_active = FALSE 
+                WHERE user_id = %s AND device_uuid = %s AND is_active = TRUE
+            """, (user_id, device_uuid))
+        else:
+            cursor.execute("""
+                UPDATE user_access_tokens 
+                SET is_active = 0 
+                WHERE user_id = ? AND device_uuid = ? AND is_active = 1
+            """, (user_id, device_uuid))
+        
+        # 액세스 토큰 생성
+        access_token = generate_access_token()
+        token_hash = hash_token(access_token)
+        now = datetime.datetime.now()
+        expires_at = now + datetime.timedelta(days=7)  # 7일 유효
     
         # 토큰 저장
         if USE_POSTGRESQL:
