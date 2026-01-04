@@ -29,10 +29,16 @@
         
         h1 {
             color: #333;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
             text-align: center;
             border-bottom: 3px solid #667eea;
-            padding-bottom: 15px;
+            padding-bottom: 10px;
+            font-size: 24px;
+        }
+        
+        h2 {
+            font-size: 18px;
+            margin-bottom: 15px;
         }
         
         .tabs {
@@ -43,12 +49,12 @@
         }
         
         .tab {
-            padding: 12px 24px;
+            padding: 10px 20px;
             background: #f5f5f5;
             border: none;
             cursor: pointer;
             border-radius: 5px 5px 0 0;
-            font-size: 16px;
+            font-size: 14px;
             transition: all 0.3s;
         }
         
@@ -75,17 +81,18 @@
         
         label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 4px;
             font-weight: bold;
             color: #555;
+            font-size: 13px;
         }
         
         input, select, textarea {
             width: 100%;
-            padding: 10px;
+            padding: 8px;
             border: 2px solid #ddd;
             border-radius: 5px;
-            font-size: 14px;
+            font-size: 13px;
             transition: border-color 0.3s;
         }
         
@@ -97,12 +104,13 @@
         button {
             background: #667eea;
             color: white;
-            padding: 12px 24px;
+            padding: 6px 12px;
             border: none;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 12px;
             transition: background 0.3s;
+            white-space: nowrap;
         }
         
         button:hover {
@@ -148,14 +156,16 @@
         }
         
         th, td {
-            padding: 12px;
+            padding: 8px;
             text-align: left;
             border-bottom: 1px solid #ddd;
+            font-size: 12px;
         }
         
         th {
             background: #667eea;
             color: white;
+            font-size: 13px;
         }
         
         tr:hover {
@@ -164,9 +174,9 @@
         
         .badge {
             display: inline-block;
-            padding: 4px 8px;
+            padding: 3px 6px;
             border-radius: 3px;
-            font-size: 12px;
+            font-size: 10px;
             font-weight: bold;
         }
         
@@ -201,13 +211,63 @@
         }
         
         .stat-card h3 {
-            font-size: 32px;
-            margin-bottom: 10px;
+            font-size: 24px;
+            margin-bottom: 8px;
         }
         
         .stat-card p {
-            font-size: 14px;
+            font-size: 12px;
             opacity: 0.9;
+        }
+        
+        /* 모달 스타일 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover,
+        .close:focus {
+            color: black;
+        }
+        
+        .text-truncate {
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: inline-block;
+        }
+        
+        .date-short {
+            font-size: 11px;
+            white-space: nowrap;
         }
     </style>
 </head>
@@ -321,6 +381,43 @@
         </div>
     </div>
     
+    <!-- 구독 연장 모달 -->
+    <div id="extendModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeExtendModal()">&times;</span>
+            <h2 style="font-size: 18px; margin-bottom: 15px;">구독 연장</h2>
+            <form id="extend-modal-form">
+                <div class="form-group">
+                    <label>사용자 ID</label>
+                    <input type="text" id="modal_extend_user_id" readonly style="background: #f5f5f5;">
+                </div>
+                <div class="form-group">
+                    <label>연장 기간 *</label>
+                    <select id="modal_extend_period" required>
+                        <option value="30">1개월 (30일)</option>
+                        <option value="90">3개월 (90일)</option>
+                        <option value="180">6개월 (180일)</option>
+                        <option value="365">1년 (365일)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>결제 금액 (원)</label>
+                    <input type="number" id="modal_extend_amount" min="0" value="0">
+                </div>
+                <div class="form-group">
+                    <label>결제 방법</label>
+                    <input type="text" id="modal_payment_method" placeholder="예: 카드, 계좌이체 등">
+                </div>
+                <div class="form-group">
+                    <label>비고</label>
+                    <textarea id="modal_extend_note" rows="3" placeholder="추가 메모"></textarea>
+                </div>
+                <button type="submit" style="width: 100%;">구독 연장</button>
+                <button type="button" onclick="closeExtendModal()" class="secondary" style="width: 100%; margin-top: 10px;">취소</button>
+            </form>
+        </div>
+    </div>
+    
     <script>
         const API_URL = window.location.origin;
         
@@ -425,7 +522,67 @@
         }
         
         
-        // 구독 연장
+        // 구독 연장 모달 열기
+        function openExtendModal(userId) {
+            document.getElementById('modal_extend_user_id').value = userId;
+            document.getElementById('modal_extend_period').value = '30';
+            document.getElementById('modal_extend_amount').value = '0';
+            document.getElementById('modal_payment_method').value = '';
+            document.getElementById('modal_extend_note').value = '';
+            document.getElementById('extendModal').style.display = 'block';
+        }
+        
+        // 구독 연장 모달 닫기
+        function closeExtendModal() {
+            document.getElementById('extendModal').style.display = 'none';
+        }
+        
+        // 모달 외부 클릭 시 닫기
+        window.onclick = function(event) {
+            const modal = document.getElementById('extendModal');
+            if (event.target == modal) {
+                closeExtendModal();
+            }
+        }
+        
+        // 모달에서 구독 연장
+        document.getElementById('extend-modal-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const data = {
+                admin_key: ADMIN_KEY,
+                user_id: document.getElementById('modal_extend_user_id').value.trim(),
+                period_days: parseInt(document.getElementById('modal_extend_period').value),
+                amount: parseFloat(document.getElementById('modal_extend_amount').value),
+                payment_method: document.getElementById('modal_payment_method').value.trim(),
+                note: document.getElementById('modal_extend_note').value.trim()
+            };
+            
+            try {
+                const response = await fetch(`${API_URL}/api/extend_user_subscription`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert(`구독 연장 완료!<br>새 만료일: ${result.expiry_date.split('T')[0]}`, 'success');
+                    closeExtendModal();
+                    loadUserList(); // 목록 새로고침
+                    if (document.getElementById('dashboard').classList.contains('active')) {
+                        loadDashboard(); // 대시보드도 새로고침
+                    }
+                } else {
+                    showAlert(result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('오류가 발생했습니다: ' + error.message, 'error');
+            }
+        });
+        
+        // 기존 구독 연장 폼 (구독 연장 탭)
         document.getElementById('extend-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             
@@ -584,7 +741,7 @@
                         return user;
                     }));
                     
-                    let html = '<table><thead><tr><th>사용자 ID</th><th>이름</th><th>이메일</th><th>만료일</th><th>상태</th><th>등록된 기기</th><th>작업 횟수</th><th>총 송장 건수</th><th>생성일</th><th>마지막 로그인</th></tr></thead><tbody>';
+                    let html = '<table><thead><tr><th>사용자 ID</th><th>이름</th><th>이메일</th><th>만료일</th><th>상태</th><th>등록된 기기</th><th>작업 횟수</th><th>총 송장 건수</th><th>생성일</th><th>마지막 로그인</th><th>연장</th></tr></thead><tbody>';
                     
                     usersWithData.forEach(user => {
                         const expiryDate = user.expiry_date ? new Date(user.expiry_date) : null;
@@ -611,18 +768,21 @@
                             const diffTime = expiry - today;
                             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                             
-                            const dateStr = expiry.toLocaleDateString('ko-KR');
+                            const dateStr = expiry.toLocaleDateString('ko-KR', {year: 'numeric', month: '2-digit', day: '2-digit'});
                             if (isExpired) {
-                                expiryDisplay = `${dateStr} <span style="color: #dc3545; font-weight: bold;">(만료)</span>`;
+                                expiryDisplay = `<span style="font-size: 11px;">${dateStr}</span><br><span style="color: #dc3545; font-weight: bold; font-size: 10px;">(만료)</span>`;
                             } else if (diffDays <= 7) {
-                                expiryDisplay = `${dateStr} <span style="color: #ffc107; font-weight: bold;">(${diffDays}일 남음)</span>`;
+                                expiryDisplay = `<span style="font-size: 11px;">${dateStr}</span><br><span style="color: #ffc107; font-weight: bold; font-size: 10px;">(${diffDays}일)</span>`;
                             } else {
-                                expiryDisplay = `${dateStr} <span style="color: #28a745;">(${diffDays}일 남음)</span>`;
+                                expiryDisplay = `<span style="font-size: 11px;">${dateStr}</span><br><span style="color: #28a745; font-size: 10px;">(${diffDays}일)</span>`;
                             }
                         }
                         
-                        const createdDate = user.created_date ? new Date(user.created_date).toLocaleDateString('ko-KR') : '-';
-                        const lastLogin = user.last_login ? new Date(user.last_login).toLocaleDateString('ko-KR') : '-';
+                        const createdDate = user.created_date ? new Date(user.created_date).toLocaleDateString('ko-KR', {year: 'numeric', month: '2-digit', day: '2-digit'}) : '-';
+                        const lastLogin = user.last_login ? new Date(user.last_login).toLocaleDateString('ko-KR', {year: 'numeric', month: '2-digit', day: '2-digit'}) : '-';
+                        
+                        // 이메일 줄임
+                        const emailDisplay = user.email && user.email.length > 20 ? user.email.substring(0, 20) + '...' : (user.email || '-');
                         
                         // 등록된 기기(UUID) 목록 표시
                         let deviceHtml = '';
@@ -636,9 +796,9 @@
                                         <span title="${device.device_uuid}">${uuidShort}${deviceName}${activeBadge}</span>
                                         <button onclick="deleteUserDevice('${user.user_id}', '${device.device_uuid}')" class="secondary" style="padding: 2px 8px; font-size: 11px;">삭제</button>
                                     </div>
-                                    <div style="font-size: 10px; color: #666; margin-top: 2px;">
-                                        등록: ${device.registered_date ? new Date(device.registered_date).toLocaleDateString('ko-KR') : '-'} | 
-                                        최근: ${device.last_used ? new Date(device.last_used).toLocaleDateString('ko-KR') : '-'}
+                                    <div style="font-size: 9px; color: #666; margin-top: 2px;">
+                                        등록: ${device.registered_date ? new Date(device.registered_date).toLocaleDateString('ko-KR', {year: 'numeric', month: '2-digit', day: '2-digit'}) : '-'} | 
+                                        최근: ${device.last_used ? new Date(device.last_used).toLocaleDateString('ko-KR', {year: 'numeric', month: '2-digit', day: '2-digit'}) : '-'}
                                     </div>
                                 </div>`;
                             });
@@ -654,28 +814,31 @@
                         
                         html += `
                             <tr>
-                                <td><strong>${user.user_id}</strong></td>
-                                <td>${user.name || '-'}</td>
-                                <td>${user.email || '-'}</td>
-                                <td>${expiryDisplay}</td>
+                                <td><strong style="font-size: 12px;">${user.user_id}</strong></td>
+                                <td style="font-size: 12px;">${user.name || '-'}</td>
+                                <td class="text-truncate" title="${user.email || ''}">${emailDisplay}</td>
+                                <td class="date-short">${expiryDisplay}</td>
                                 <td>${statusBadge}</td>
-                                <td style="max-width: 300px; font-size: 12px;">
+                                <td style="max-width: 250px; font-size: 11px;">
                                     ${deviceHtml}
                                 </td>
-                                <td style="text-align: center;">
-                                    <strong style="font-size: 14px; color: #007bff;">${workCount.toLocaleString()}</strong>회
+                                <td style="text-align: center; font-size: 12px;">
+                                    <strong style="color: #007bff;">${workCount.toLocaleString()}</strong>회
                                 </td>
-                                <td style="text-align: center;">
-                                    <div style="font-size: 14px;">
+                                <td style="text-align: center; font-size: 11px;">
+                                    <div>
                                         <strong style="color: #28a745;">${totalInvoices.toLocaleString()}</strong>건
                                     </div>
-                                    <div style="font-size: 11px; color: #666; margin-top: 3px;">
+                                    <div style="font-size: 10px; color: #666; margin-top: 2px;">
                                         성공: <span style="color: #28a745;">${totalSuccess.toLocaleString()}</span> | 
                                         실패: <span style="color: #dc3545;">${totalFail.toLocaleString()}</span>
                                     </div>
                                 </td>
-                                <td>${createdDate}</td>
-                                <td>${lastLogin}</td>
+                                <td class="date-short">${createdDate}</td>
+                                <td class="date-short">${lastLogin}</td>
+                                <td>
+                                    <button onclick="openExtendModal('${user.user_id}')" style="padding: 4px 8px; font-size: 11px;">연장</button>
+                                </td>
                             </tr>
                         `;
                     });
