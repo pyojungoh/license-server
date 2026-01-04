@@ -3007,8 +3007,8 @@ def send_admin_message():
         phone = data.get('phone', '').strip()
         
         # 필수 필드 확인
-        if not user_id or not category or not title or not content:
-            return jsonify({'success': False, 'message': '필수 항목을 모두 입력해주세요.'}), 400
+        if not user_id or not category or not title or not content or not phone:
+            return jsonify({'success': False, 'message': '필수 항목을 모두 입력해주세요. (아이디, 종류, 제목, 내용, 전화번호)'}), 400
         
         # 카테고리 유효성 검사
         valid_categories = ['입금확인', '사용방법', '오류', '기타']
@@ -3027,11 +3027,9 @@ def send_admin_message():
 <b>제목:</b> {title}
 
 <b>내용:</b>
-{content}"""
-            
-            # 전화번호가 있으면 추가 (선택사항)
-            if phone and phone.strip():
-                message += f"\n\n<b>회신 전화번호:</b> {phone.strip()}"
+{content}
+
+<b>회신 전화번호:</b> {phone.strip()}"""
             
             message += f"\n\n<i>수신 시간: {time_str}</i>"
             
