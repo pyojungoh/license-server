@@ -3016,36 +3016,45 @@ def send_admin_message():
             return jsonify({'success': False, 'message': f'유효하지 않은 종류입니다. ({", ".join(valid_categories)})'}), 400
         
         # 텔레그램 메시지 포맷팅
-        message = f"""
-<b>📩 관리자 메시지</b>
+        try:
+            now = datetime.datetime.now()
+            time_str = now.strftime('%Y-%m-%d %H:%M:%S')
+            
+            message = f"""<b>📩 관리자 메시지</b>
 
 <b>아이디:</b> {user_id}
 <b>종류:</b> {category}
 <b>제목:</b> {title}
 
 <b>내용:</b>
-{content}
-"""
-        
-        if phone:
-            message += f"\n<b>회신 전화번호:</b> {phone}"
-        
-        message += f"\n\n<i>수신 시간: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>"
-        
-        # 텔레그램으로 전송
-        telegram_sent = send_telegram_message(message)
-        
-        if telegram_sent:
-            return jsonify({
-                'success': True,
-                'message': '메시지가 전송되었습니다.'
-            }), 200
-        else:
-            # 텔레그램 전송 실패해도 에러 응답 (이미 전송됐을 수도 있으므로)
-            logger.warning("텔레그램 메시지 전송 실패했지만 요청은 처리됨")
+{content}"""
+            
+            # 전화번호가 있으면 추가 (선택사항)
+            if phone and phone.strip():
+                message += f"\n\n<b>회신 전화번호:</b> {phone.strip()}"
+            
+            message += f"\n\n<i>수신 시간: {time_str}</i>"
+            
+            # 텔레그램으로 전송
+            telegram_sent = send_telegram_message(message)
+            
+            if telegram_sent:
+                return jsonify({
+                    'success': True,
+                    'message': '메시지가 전송되었습니다.'
+                }), 200
+            else:
+                # 텔레그램 전송 실패
+                logger.warning("텔레그램 메시지 전송 실패")
+                return jsonify({
+                    'success': False,
+                    'message': '메시지 전송에 실패했습니다. 나중에 다시 시도해주세요.'
+                }), 500
+        except Exception as format_error:
+            logger.error(f"메시지 포맷팅 오류: {format_error}", exc_info=True)
             return jsonify({
                 'success': False,
-                'message': '메시지 전송에 실패했습니다. 나중에 다시 시도해주세요.'
+                'message': f'메시지 처리 중 오류가 발생했습니다: {str(format_error)}'
             }), 500
             
     except Exception as e:

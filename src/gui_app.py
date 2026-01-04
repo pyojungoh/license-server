@@ -944,8 +944,10 @@ class HanjinAutomationApp:
         content_scroll.grid(row=3, column=2, sticky=(tk.N, tk.S), pady=5)
         content_text.config(yscrollcommand=content_scroll.set)
         
-        # 회신받을 전화번호
+        # 회신받을 전화번호 (선택사항)
         ttk.Label(main_frame, text="회신받을 전화번호:").grid(row=4, column=0, sticky=tk.W, pady=5)
+        phone_label_hint = ttk.Label(main_frame, text="(선택사항)", font=("맑은 고딕", 8), foreground="gray")
+        phone_label_hint.grid(row=4, column=0, sticky=tk.E, pady=5)
         phone_var = tk.StringVar()
         phone_entry = ttk.Entry(main_frame, textvariable=phone_var, width=40)
         phone_entry.grid(row=4, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
