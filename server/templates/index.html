@@ -1262,6 +1262,253 @@
             
             document.getElementById('extendModal').style.display = 'block';
         }
+        
+        // 결제 방법 드롭다운 채우기
+        async function loadPaymentMethods() {
+            try {
+                const response = await fetch(`${API_URL}/api/get_payment_methods`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({admin_key: ADMIN_KEY})
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    const methods = result.payment_methods || [];
+                    const selects = ['payment_method', 'modal_payment_method'];
+                    
+                    selects.forEach(selectId => {
+                        const select = document.getElementById(selectId);
+                        if (select) {
+                            // 기존 옵션 제거 (첫 번째와 마지막 옵션 제외)
+                            while (select.options.length > 2) {
+                                select.remove(1);
+                            }
+                            
+                            // 결제 방법 목록 추가
+                            methods.forEach(method => {
+                                const option = document.createElement('option');
+                                option.value = method;
+                                option.textContent = method;
+                                select.insertBefore(option, select.lastChild);
+                            });
+                        }
+                    });
+                    
+                    // 결제 방법 목록 표시
+                    const listContainer = document.getElementById('payment-methods-list');
+                    if (listContainer) {
+                        if (methods.length === 0) {
+                            listContainer.innerHTML = '<p style="color: #999;">등록된 결제 방법이 없습니다.</p>';
+                        } else {
+                            let html = '<table style="width: 100%; max-width: 500px;"><thead><tr><th>결제 방법</th><th>삭제</th></tr></thead><tbody>';
+                            methods.forEach(method => {
+                                html += `<tr>
+                                    <td>${method}</td>
+                                    <td><button onclick="deletePaymentMethod('${method}')" style="padding: 3px 8px; font-size: 10px; background: #dc3545;" class="secondary">삭제</button></td>
+                                </tr>`;
+                            });
+                            html += '</tbody></table>';
+                            listContainer.innerHTML = html;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('결제 방법 로드 오류:', error);
+            }
+        }
+        
+        // 결제 방법 직접 입력 토글
+        function toggleCustomPaymentMethod(type) {
+            const prefix = type === 'modal' ? 'modal_' : '';
+            const select = document.getElementById(prefix + 'payment_method');
+            const customInput = document.getElementById(prefix + 'payment_method_custom');
+            
+            if (select.value === '_custom_') {
+                customInput.style.display = 'block';
+                customInput.value = '';
+            } else {
+                customInput.style.display = 'none';
+                customInput.value = '';
+            }
+        }
+        
+        // 결제 방법 추가
+        async function addPaymentMethod() {
+            const methodName = document.getElementById('new_payment_method').value.trim();
+            if (!methodName) {
+                showAlert('결제 방법 이름을 입력해주세요.', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/api/add_payment_method`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        admin_key: ADMIN_KEY,
+                        method_name: methodName
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert(result.message, 'success');
+                    document.getElementById('new_payment_method').value = '';
+                    loadPaymentMethods();
+                } else {
+                    showAlert(result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+        
+        // 결제 방법 삭제
+        async function deletePaymentMethod(methodName) {
+            if (!confirm(`정말로 "${methodName}" 결제 방법을 삭제하시겠습니까?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/api/delete_payment_method`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        admin_key: ADMIN_KEY,
+                        method_name: methodName
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert(result.message, 'success');
+                    loadPaymentMethods();
+                } else {
+                    showAlert(result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+        
+        // 사용자 로그 조회
+        async function loadUserLogs() {
+            const userId = document.getElementById('log_user_id').value.trim();
+            if (!userId) {
+                showAlert('사용자 ID를 입력해주세요.', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/api/get_user_logs`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        admin_key: ADMIN_KEY,
+                        user_id: userId
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    const container = document.getElementById('user-log-container');
+                    const user = result.user;
+                    const history = result.payment_history || [];
+                    
+                    const createdDate = user.created_date ? new Date(user.created_date).toLocaleDateString('ko-KR') : '-';
+                    
+                    let html = `
+                        <div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 5px;">
+                            <h3 style="font-size: 16px; margin-bottom: 10px;">사용자 정보</h3>
+                            <p><strong>사용자 ID:</strong> ${user.user_id}</p>
+                            <p><strong>이름:</strong> ${user.name || '-'}</p>
+                            <p><strong>이메일:</strong> ${user.email || '-'}</p>
+                            <p><strong>가입일:</strong> ${createdDate}</p>
+                        </div>
+                    `;
+                    
+                    if (history.length === 0) {
+                        html += '<p>연장 내역이 없습니다.</p>';
+                    } else {
+                        html += '<h3 style="font-size: 16px; margin-bottom: 10px;">연장 내역</h3>';
+                        html += '<table><thead><tr><th>날짜</th><th>기간</th><th>금액 (원)</th><th>결제 방법</th><th>비고</th><th>삭제</th></tr></thead><tbody>';
+                        
+                        history.forEach(payment => {
+                            const date = new Date(payment.payment_date);
+                            const dateStr = date.toLocaleDateString('ko-KR');
+                            html += `
+                                <tr>
+                                    <td style="font-size: 11px;">${dateStr}</td>
+                                    <td style="text-align: center;">${payment.period_text}</td>
+                                    <td style="text-align: right;">${Math.round(payment.amount).toLocaleString()}</td>
+                                    <td style="font-size: 11px;">${payment.payment_method || '-'}</td>
+                                    <td style="font-size: 11px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${payment.note || ''}">${payment.note || '-'}</td>
+                                    <td>
+                                        <button onclick="deletePaymentFromLog('${userId}', '${payment.payment_date}')" style="padding: 3px 8px; font-size: 10px; background: #dc3545;" class="secondary">삭제</button>
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                        
+                        html += '</tbody></table>';
+                    }
+                    
+                    container.innerHTML = html;
+                } else {
+                    showAlert(result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+        
+        // 로그에서 결제 내역 삭제 (결제 날짜로 찾기)
+        async function deletePaymentFromLog(userId, paymentDate) {
+            if (!confirm('정말로 이 연장 내역을 삭제하시겠습니까?')) {
+                return;
+            }
+            
+            // 결제 내역 목록을 가져와서 ID 찾기
+            try {
+                const response = await fetch(`${API_URL}/api/list_payments`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        admin_key: ADMIN_KEY,
+                        user_id: userId,
+                        limit: 100
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    const payments = result.payments || [];
+                    const payment = payments.find(p => p.payment_date === paymentDate || p.payment_date.startsWith(paymentDate.split('T')[0]));
+                    
+                    if (payment) {
+                        await deletePayment(payment.id);
+                        loadUserLogs(); // 로그 다시 로드
+                    } else {
+                        showAlert('결제 내역을 찾을 수 없습니다.', 'error');
+                    }
+                }
+            } catch (error) {
+                showAlert('오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+        
+        // 페이지 로드 시 결제 방법 목록 로드 및 대시보드 로드
+        window.addEventListener('DOMContentLoaded', function() {
+            loadPaymentMethods();
+            checkDatabase();
+            loadDashboard();
+        });
     </script>
 </body>
 </html>

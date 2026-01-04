@@ -3241,15 +3241,21 @@ def get_pricing_settings():
             rows = cursor.fetchall()
             pricing = {row[0]: float(row[1]) for row in rows}
         
-        # 결제 방법 목록도 함께 반환
-        if USE_POSTGRESQL:
-            cursor.execute("SELECT method_name FROM payment_methods ORDER BY method_name")
-            method_rows = cursor.fetchall()
-            payment_methods = [row['method_name'] for row in method_rows]
-        else:
-            cursor.execute("SELECT method_name FROM payment_methods ORDER BY method_name")
-            method_rows = cursor.fetchall()
-            payment_methods = [row[0] for row in method_rows]
+        # 결제 방법 목록도 함께 반환 (테이블이 없을 수 있으므로 try-except로 감싸기)
+        payment_methods = []
+        try:
+            if USE_POSTGRESQL:
+                cursor.execute("SELECT method_name FROM payment_methods ORDER BY method_name")
+                method_rows = cursor.fetchall()
+                payment_methods = [row['method_name'] for row in method_rows]
+            else:
+                cursor.execute("SELECT method_name FROM payment_methods ORDER BY method_name")
+                method_rows = cursor.fetchall()
+                payment_methods = [row[0] for row in method_rows]
+        except Exception as e:
+            # 테이블이 없거나 오류 발생 시 빈 배열 반환
+            logger.warning(f"결제 방법 목록 조회 실패 (테이블 없을 수 있음): {e}")
+            payment_methods = []
         
         return jsonify({
             'success': True,
