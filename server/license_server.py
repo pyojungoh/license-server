@@ -3293,6 +3293,30 @@ def update_pricing_settings():
         cursor = conn.cursor()
     
     try:
+        # 테이블이 없으면 생성
+        try:
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS subscription_pricing (
+                        id SERIAL PRIMARY KEY,
+                        period_days INTEGER UNIQUE NOT NULL,
+                        amount DECIMAL(10, 2) NOT NULL,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+            else:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS subscription_pricing (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        period_days INTEGER UNIQUE NOT NULL,
+                        amount REAL NOT NULL,
+                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+            conn.commit()
+        except Exception as create_error:
+            logger.warning(f"테이블 생성 시도 중 오류 (이미 존재할 수 있음): {create_error}")
+        
         now = datetime.datetime.now()
         if USE_POSTGRESQL:
             for period_days, amount in pricing.items():
@@ -3318,9 +3342,15 @@ def update_pricing_settings():
         })
     except Exception as e:
         logger.error(f"사용료 설정 업데이트 오류: {e}", exc_info=True)
+        if conn:
+            try:
+                conn.rollback()
+            except:
+                pass
         return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/get_payment_methods', methods=['POST'])
 def get_payment_methods():
@@ -3384,6 +3414,28 @@ def add_payment_method():
         cursor = conn.cursor()
     
     try:
+        # 테이블이 없으면 생성
+        try:
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS payment_methods (
+                        id SERIAL PRIMARY KEY,
+                        method_name VARCHAR(50) UNIQUE NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+            else:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS payment_methods (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        method_name TEXT UNIQUE NOT NULL,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+            conn.commit()
+        except Exception as create_error:
+            logger.warning(f"테이블 생성 시도 중 오류 (이미 존재할 수 있음): {create_error}")
+        
         if USE_POSTGRESQL:
             cursor.execute("INSERT INTO payment_methods (method_name) VALUES (%s) ON CONFLICT (method_name) DO NOTHING", (method_name,))
         else:
@@ -3400,9 +3452,15 @@ def add_payment_method():
         })
     except Exception as e:
         logger.error(f"결제 방법 추가 오류: {e}", exc_info=True)
+        if conn:
+            try:
+                conn.rollback()
+            except:
+                pass
         return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/delete_payment_method', methods=['POST'])
 def delete_payment_method():
