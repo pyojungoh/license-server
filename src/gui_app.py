@@ -275,6 +275,11 @@ class HanjinAutomationApp:
         file_menu.add_separator()
         file_menu.add_command(label="종료", command=self.on_closing)
         
+        # 도움말 메뉴
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="도움말", menu=help_menu)
+        help_menu.add_command(label="관리자에게 메시지 보내기", command=self.show_admin_message_window)
+        
         # 메인 프레임
         main_frame = ttk.Frame(self.root, padding="8")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -881,6 +886,130 @@ class HanjinAutomationApp:
         
         # 자동 로그아웃 타이머 다시 시작
         self.start_auto_logout_timer()
+    
+    def show_admin_message_window(self):
+        """관리자에게 메시지 보내기 창"""
+        if not self.current_user_id:
+            messagebox.showwarning("경고", "로그인이 필요합니다.")
+            return
+        
+        # 새 창 생성
+        msg_window = tk.Toplevel(self.root)
+        msg_window.title("관리자에게 메시지 보내기")
+        msg_window.geometry("500x550")
+        msg_window.resizable(False, False)
+        msg_window.transient(self.root)
+        msg_window.grab_set()
+        
+        # 창을 화면 중앙에 배치
+        msg_window.update_idletasks()
+        x = (msg_window.winfo_screenwidth() // 2) - (500 // 2)
+        y = (msg_window.winfo_screenheight() // 2) - (550 // 2)
+        msg_window.geometry(f"500x550+{x}+{y}")
+        
+        # 메인 프레임
+        main_frame = ttk.Frame(msg_window, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 아이디 (읽기 전용)
+        ttk.Label(main_frame, text="아이디:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        user_id_var = tk.StringVar(value=self.current_user_id)
+        user_id_entry = ttk.Entry(main_frame, textvariable=user_id_var, state="readonly", width=40)
+        user_id_entry.grid(row=0, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
+        
+        # 종류 (라디오 버튼)
+        ttk.Label(main_frame, text="종류:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        category_frame = ttk.Frame(main_frame)
+        category_frame.grid(row=1, column=1, padx=10, pady=5, sticky=tk.W)
+        
+        category_var = tk.StringVar(value="기타")
+        categories = ["입금확인", "사용방법", "오류", "기타"]
+        for idx, cat in enumerate(categories):
+            ttk.Radiobutton(category_frame, text=cat, variable=category_var, value=cat).grid(row=0, column=idx, padx=5)
+        
+        # 제목
+        ttk.Label(main_frame, text="제목:").grid(row=2, column=0, sticky=(tk.W, tk.N), pady=5)
+        title_var = tk.StringVar()
+        title_entry = ttk.Entry(main_frame, textvariable=title_var, width=40)
+        title_entry.grid(row=2, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
+        title_entry.focus()
+        
+        # 내용
+        ttk.Label(main_frame, text="내용:").grid(row=3, column=0, sticky=(tk.W, tk.N), pady=5)
+        content_text = tk.Text(main_frame, width=40, height=10, wrap=tk.WORD)
+        content_text.grid(row=3, column=1, padx=10, pady=5, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # 스크롤바
+        content_scroll = ttk.Scrollbar(main_frame, orient=tk.VERTICAL, command=content_text.yview)
+        content_scroll.grid(row=3, column=2, sticky=(tk.N, tk.S), pady=5)
+        content_text.config(yscrollcommand=content_scroll.set)
+        
+        # 회신받을 전화번호
+        ttk.Label(main_frame, text="회신받을 전화번호:").grid(row=4, column=0, sticky=tk.W, pady=5)
+        phone_var = tk.StringVar()
+        phone_entry = ttk.Entry(main_frame, textvariable=phone_var, width=40)
+        phone_entry.grid(row=4, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
+        
+        # 상태 메시지
+        status_label = ttk.Label(main_frame, text="", foreground="red", wraplength=400)
+        status_label.grid(row=5, column=0, columnspan=3, pady=10)
+        
+        # 그리드 가중치 설정
+        main_frame.columnconfigure(1, weight=1)
+        main_frame.rowconfigure(3, weight=1)
+        
+        def send_message():
+            """메시지 전송"""
+            category = category_var.get()
+            title = title_var.get().strip()
+            content = content_text.get("1.0", tk.END).strip()
+            phone = phone_var.get().strip()
+            
+            # 유효성 검사
+            if not title:
+                status_label.config(text="제목을 입력해주세요.", foreground="red")
+                title_entry.focus()
+                return
+            
+            if not content:
+                status_label.config(text="내용을 입력해주세요.", foreground="red")
+                content_text.focus()
+                return
+            
+            # 전송
+            status_label.config(text="전송 중...", foreground="blue")
+            msg_window.update()
+            
+            success, message = self.user_auth_manager.send_admin_message(
+                category=category,
+                title=title,
+                content=content,
+                phone=phone
+            )
+            
+            if success:
+                status_label.config(text=message, foreground="green")
+                messagebox.showinfo("성공", message)
+                # 창 닫기
+                msg_window.destroy()
+            else:
+                status_label.config(text=message, foreground="red")
+        
+        # 버튼 프레임
+        button_frame = ttk.Frame(main_frame)
+        button_frame.grid(row=6, column=0, columnspan=3, pady=20)
+        
+        ttk.Button(button_frame, text="전송", command=send_message, width=15).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="취소", command=msg_window.destroy, width=15).pack(side=tk.LEFT, padx=5)
+        
+        # Enter 키로 전송
+        def on_enter(event):
+            send_message()
+        
+        title_entry.bind("<Return>", lambda e: content_text.focus())
+        msg_window.bind("<Return>", on_enter)
+        
+        msg_window.focus_set()
     
     def on_closing(self):
         """프로그램 종료 시 정리"""

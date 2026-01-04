@@ -388,4 +388,66 @@ class UserAuthManager:
         except Exception as e:
             logger.error(f"사용량 기록 오류: {e}")
             return False, f"오류가 발생했습니다: {str(e)}"
+    
+    def send_admin_message(self, category: str, title: str, content: str, phone: str = "") -> Tuple[bool, str]:
+        """
+        관리자에게 메시지 전송
+        
+        Args:
+            category: 종류 (입금확인, 사용방법, 오류, 기타)
+            title: 제목
+            content: 내용
+            phone: 회신받을 전화번호 (선택사항)
+            
+        Returns:
+            (성공 여부, 메시지)
+        """
+        if not self.session_data or not self.session_data.get("user_id"):
+            return False, "로그인이 필요합니다."
+        
+        user_id = self.session_data.get("user_id")
+        
+        try:
+            payload = {
+                "user_id": user_id,
+                "category": category,
+                "title": title,
+                "content": content
+            }
+            
+            if phone:
+                payload["phone"] = phone
+            
+            response = requests.post(
+                f"{self.server_url}/api/send_admin_message",
+                json=payload,
+                timeout=10
+            )
+            
+            try:
+                data = response.json()
+            except (ValueError, json.JSONDecodeError) as e:
+                logger.error(f"서버 응답 JSON 파싱 실패: {e}, 응답 내용: {response.text[:200]}")
+                return False, f"서버 응답을 처리할 수 없습니다. (상태 코드: {response.status_code})"
+            
+            if response.status_code == 200:
+                if data.get('success'):
+                    logger.info(f"관리자 메시지 전송 성공: {user_id}")
+                    return True, data.get('message', '메시지가 전송되었습니다.')
+                else:
+                    return False, data.get('message', '메시지 전송 실패')
+            else:
+                error_msg = data.get('message', f'서버 오류가 발생했습니다. (상태 코드: {response.status_code})')
+                logger.error(f"관리자 메시지 전송 실패 (상태 코드 {response.status_code}): {error_msg}")
+                return False, error_msg
+                
+        except requests.exceptions.ConnectionError:
+            logger.error("서버 연결 실패")
+            return False, "서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요."
+        except requests.exceptions.Timeout:
+            logger.error("서버 응답 시간 초과")
+            return False, "서버 응답 시간이 초과되었습니다."
+        except Exception as e:
+            logger.error(f"관리자 메시지 전송 오류: {e}", exc_info=True)
+            return False, f"오류가 발생했습니다: {str(e)}"
 

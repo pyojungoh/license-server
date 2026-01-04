@@ -15,6 +15,7 @@ from pathlib import Path
 import json
 import os
 import bcrypt
+import requests
 
 # 템플릿 폴더 경로 (현재 파일 기준)
 template_dir = Path(__file__).parent / 'templates'
@@ -23,6 +24,10 @@ CORS(app)  # CORS 허용 (클라이언트에서 접근 가능하도록)
 
 # 관리자 키 (환경변수 또는 기본값)
 ADMIN_KEY = os.environ.get('ADMIN_KEY', '2133781qQ!!@#')
+
+# 텔레그램 봇 설정 (환경변수)
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 
 # 데이터베이스 연결 설정
 # Railway PostgreSQL 사용 (DATABASE_URL 환경변수)
@@ -2943,6 +2948,108 @@ def get_usage_stats():
         },
         'by_license': license_stats
     })
+
+def send_telegram_message(message: str) -> bool:
+    """
+    텔레그램 봇으로 메시지 전송
+    
+    Args:
+        message: 전송할 메시지 내용
+        
+    Returns:
+        전송 성공 여부
+    """
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        logger.warning("텔레그램 봇 설정이 없습니다. TELEGRAM_BOT_TOKEN과 TELEGRAM_CHAT_ID를 설정하세요.")
+        return False
+    
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+        
+        response = requests.post(url, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            logger.info("텔레그램 메시지 전송 성공")
+            return True
+        else:
+            logger.error(f"텔레그램 메시지 전송 실패: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        logger.error(f"텔레그램 메시지 전송 오류: {e}")
+        return False
+
+@app.route('/api/send_admin_message', methods=['POST'])
+def send_admin_message():
+    """
+    관리자에게 메시지 전송 (텔레그램 봇)
+    
+    요청 데이터:
+    - user_id: 사용자 ID
+    - category: 종류 (입금확인, 사용방법, 오류, 기타)
+    - title: 제목
+    - content: 내용
+    - phone: 회신받을 전화번호 (선택사항)
+    """
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'message': '요청 데이터가 없습니다.'}), 400
+        
+        user_id = data.get('user_id', '').strip()
+        category = data.get('category', '').strip()
+        title = data.get('title', '').strip()
+        content = data.get('content', '').strip()
+        phone = data.get('phone', '').strip()
+        
+        # 필수 필드 확인
+        if not user_id or not category or not title or not content:
+            return jsonify({'success': False, 'message': '필수 항목을 모두 입력해주세요.'}), 400
+        
+        # 카테고리 유효성 검사
+        valid_categories = ['입금확인', '사용방법', '오류', '기타']
+        if category not in valid_categories:
+            return jsonify({'success': False, 'message': f'유효하지 않은 종류입니다. ({", ".join(valid_categories)})'}), 400
+        
+        # 텔레그램 메시지 포맷팅
+        message = f"""
+<b>📩 관리자 메시지</b>
+
+<b>아이디:</b> {user_id}
+<b>종류:</b> {category}
+<b>제목:</b> {title}
+
+<b>내용:</b>
+{content}
+"""
+        
+        if phone:
+            message += f"\n<b>회신 전화번호:</b> {phone}"
+        
+        message += f"\n\n<i>수신 시간: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>"
+        
+        # 텔레그램으로 전송
+        if send_telegram_message(message):
+            return jsonify({
+                'success': True,
+                'message': '메시지가 전송되었습니다.'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '메시지 전송에 실패했습니다. 나중에 다시 시도해주세요.'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"관리자 메시지 전송 오류: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'오류가 발생했습니다: {str(e)}'
+        }), 500
 
 if __name__ == '__main__':
     # 데이터베이스 초기화
