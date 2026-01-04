@@ -502,26 +502,19 @@ class HanjinAutomationApp:
             except:
                 registered_macs = []
             
-            # ESP32 연결
+            # AI BOT 연결
             controller = BluetoothController(port=port, baudrate=115200)
             if not controller.connect():
-                self.log("⚠️ ESP32 연결에 실패했습니다. MAC 주소 검증을 건너뜁니다.")
+                self.log("⚠️ AI BOT 연결에 실패했습니다. MAC 주소 검증을 건너뜁니다.")
                 if registered_macs:
                     self.log(f"등록된 MAC 주소: {', '.join(registered_macs)}")
                 return True  # 연결 실패해도 검증 스킵하고 계속 진행
             
-            # MAC 주소 확인 (로그 콜백 사용)
-            self.log("ESP32에 MAC 주소 요청 전송 중...")
-            mac_address, response_messages = controller.get_connected_mac_address(
-                log_callback=lambda msg: self.log(f"[ESP32] {msg}")
-            )
-            
-            if response_messages:
-                self.log(f"ESP32 응답 메시지 수신: {len(response_messages)}개")
-                for msg in response_messages:
-                    self.log(f"  → {msg}")
-            else:
-                self.log("ESP32로부터 응답 없음")
+            # MAC 주소 자동 조회 비활성화 (GET_CONNECTED_MAC 명령이 송장번호 입력 필드에 들어가는 것을 방지)
+            # MAC 주소 확인 기능 제거 - 송장번호 전송에만 집중
+            self.log("MAC 주소 자동 조회 기능이 비활성화되어 있습니다.")
+            mac_address = None
+            response_messages = []
             
             controller.disconnect()
             
@@ -534,7 +527,7 @@ class HanjinAutomationApp:
             
             # MAC 주소를 얻지 못한 경우 - 경고만 표시하고 계속 진행
             if not mac_address or mac_address == "00:00:00:00:00:00":
-                self.log("⚠️ ESP32에서 MAC 주소를 자동으로 확인할 수 없습니다.")
+                self.log("⚠️ AI BOT에서 MAC 주소를 자동으로 확인할 수 없습니다.")
                 if registered_macs:
                     self.log(f"등록된 MAC 주소: {', '.join(registered_macs)}")
                 self.log("MAC 주소 검증을 건너뛰고 계속 진행합니다.")
@@ -686,7 +679,7 @@ class HanjinAutomationApp:
             return
         
         # MAC 주소 검증 (선택사항 - 사용자가 취소하면 계속 진행)
-        # ESP32에서 MAC 주소 자동 확인이 어려우므로, 검증 실패 시에도 진행 가능하도록 변경
+        # AI BOT에서 MAC 주소 자동 확인이 어려우므로, 검증 실패 시에도 진행 가능하도록 변경
         try:
             if not self.verify_mac_address_optional():
                 # 사용자가 취소하지 않았고 검증이 실패한 경우만 중단
@@ -746,7 +739,7 @@ class HanjinAutomationApp:
             self.log("BLT AI 로봇 연결 성공!")
             self.controller = controller
             
-            # ESP32 시리얼 메시지 모니터링 시작
+            # AI BOT 시리얼 메시지 모니터링 시작
             controller.start_serial_monitoring(log_callback=lambda msg: self.log(msg))
             
             # 이미 로드된 엑셀 데이터 사용
@@ -801,12 +794,8 @@ class HanjinAutomationApp:
             # 사용 통계 서버에 전송
             try:
                 self.log("사용 통계 전송 중...")
-                # MAC 주소 다시 확인
+                # MAC 주소 조회 제거 (GET_CONNECTED_MAC 명령이 송장번호 입력 필드에 들어가는 것을 방지)
                 mac_address = None
-                if controller.is_connected():
-                    mac_address, _ = controller.get_connected_mac_address(
-                        log_callback=lambda msg: self.log(f"[ESP32] {msg}")
-                    )
                 
                 hardware_id = get_hardware_id()
                 success, msg = self.user_auth_manager.record_usage(
@@ -909,7 +898,7 @@ class HanjinAutomationApp:
         # 세션 삭제
         self.user_auth_manager.clear_session()
         
-        # ESP32 연결 종료
+        # AI BOT 연결 종료
         if self.controller:
             self.controller.disconnect()
         

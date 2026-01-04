@@ -5,8 +5,9 @@ BLT AI 로봇과 시리얼 통신을 통해 블루투스 HID 키보드로 텍스
 
 import serial
 import time
-from typing import Optional
+from typing import Optional, Callable
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,9 @@ class BluetoothController:
         self.baudrate = baudrate
         self.timeout = timeout
         self.serial_conn: Optional[serial.Serial] = None
+        self.serial_monitor_thread: Optional[threading.Thread] = None
+        self.monitor_running = False
+        self.serial_log_callback: Optional[Callable[[str], None]] = None
     
     def connect(self) -> bool:
         """
@@ -56,9 +60,73 @@ class BluetoothController:
     
     def disconnect(self):
         """연결 종료"""
+        # 시리얼 모니터링 중지
+        self.stop_serial_monitoring()
+        
         if self.serial_conn and self.serial_conn.is_open:
             self.serial_conn.close()
             logger.info("BLT AI 로봇 연결 종료")
+    
+    def start_serial_monitoring(self, log_callback: Optional[Callable[[str], None]] = None):
+        """
+        AI BOT 시리얼 메시지를 백그라운드에서 모니터링하여 로그로 표시
+        
+        Args:
+            log_callback: 시리얼 메시지를 전달할 콜백 함수 (선택사항)
+        """
+        if not self.serial_conn or not self.serial_conn.is_open:
+            logger.warning("시리얼 연결이 없어 모니터링을 시작할 수 없습니다.")
+            return
+        
+        if self.monitor_running:
+            logger.debug("시리얼 모니터링이 이미 실행 중입니다.")
+            return
+        
+        self.serial_log_callback = log_callback
+        self.monitor_running = True
+        
+        def monitor_loop():
+            """시리얼 메시지를 읽는 스레드 함수"""
+            logger.debug("AI BOT 시리얼 모니터링 시작")
+            if self.serial_log_callback:
+                self.serial_log_callback("AI BOT 시리얼 모니터링 시작")
+            
+            while self.monitor_running and self.serial_conn and self.serial_conn.is_open:
+                try:
+                    if self.serial_conn.in_waiting > 0:
+                        line = self.serial_conn.readline().decode('utf-8', errors='ignore').strip()
+                        if line:
+                            # "전송 완료 (송장번호 + Tab..." 메시지는 필터링 (표시하지 않음)
+                            if "전송 완료" in line and "Tab" in line:
+                                logger.debug(f"AI BOT (필터링됨): {line}")
+                                continue
+                            
+                            # 로그 콜백으로 전달
+                            if self.serial_log_callback:
+                                self.serial_log_callback(f"[AI BOT] {line}")
+                            logger.debug(f"AI BOT: {line}")
+                    time.sleep(0.1)  # CPU 사용량 감소
+                except Exception as e:
+                    if self.monitor_running:  # 정상 종료가 아닌 경우만 로그
+                        logger.error(f"시리얼 모니터링 오류: {e}")
+                    break
+            
+            logger.debug("AI BOT 시리얼 모니터링 종료")
+            if self.serial_log_callback:
+                self.serial_log_callback("AI BOT 시리얼 모니터링 종료")
+        
+        self.serial_monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
+        self.serial_monitor_thread.start()
+    
+    def stop_serial_monitoring(self):
+        """시리얼 모니터링 중지"""
+        if self.monitor_running:
+            self.monitor_running = False
+            if self.serial_monitor_thread:
+                self.serial_monitor_thread.join(timeout=1.0)
+            self.serial_monitor_thread = None
+            self.serial_log_callback = None
+            logger.debug("AI BOT 시리얼 모니터링 중지 요청")
     
     def send_text(self, text: str) -> bool:
         """
@@ -99,7 +167,7 @@ class BluetoothController:
     
     def get_connected_mac_address(self, log_callback=None) -> tuple[Optional[str], list[str]]:
         """
-        ESP32를 통해 연결된 모바일 기기의 MAC 주소 확인
+        AI BOT을 통해 연결된 모바일 기기의 MAC 주소 확인
         
         Args:
             log_callback: 로그 메시지를 전달할 콜백 함수 (선택사항)
@@ -107,7 +175,7 @@ class BluetoothController:
         Returns:
             (MAC 주소, 응답 메시지 리스트) 튜플
             MAC 주소 (예: "AA:BB:CC:DD:EE:FF") 또는 None
-            응답 메시지 리스트는 모든 ESP32 응답을 포함
+            응답 메시지 리스트는 모든 AI BOT 응답을 포함
         """
         if not self.serial_conn or not self.serial_conn.is_open:
             msg = "BLT AI 로봇이 연결되지 않았습니다."
@@ -120,14 +188,14 @@ class BluetoothController:
             # 기존 버퍼 비우기
             self.serial_conn.reset_input_buffer()
             if log_callback:
-                log_callback("ESP32에 MAC 주소 요청 전송 중...")
+                log_callback("AI BOT에 MAC 주소 요청 전송 중...")
             
             # "GET_CONNECTED_MAC" 명령 전송
             command = "GET_CONNECTED_MAC\n"
             self.serial_conn.write(command.encode('utf-8'))
             self.serial_conn.flush()
             if log_callback:
-                log_callback(f"ESP32 명령 전송: GET_CONNECTED_MAC")
+                log_callback(f"AI BOT 명령 전송: GET_CONNECTED_MAC")
             
             # 응답 대기 (최대 3초)
             timeout_time = time.time() + 3.0
@@ -139,8 +207,8 @@ class BluetoothController:
                     if line:
                         response_lines.append(line)
                         if log_callback:
-                            log_callback(f"ESP32 응답: {line}")
-                        logger.debug(f"ESP32 응답: {line}")
+                            log_callback(f"AI BOT 응답: {line}")
+                        logger.debug(f"AI BOT 응답: {line}")
                         
                         # "MAC:" 접두사가 있는 경우 처리
                         if line.startswith('MAC:'):
