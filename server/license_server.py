@@ -29,6 +29,11 @@ ADMIN_KEY = os.environ.get('ADMIN_KEY', '2133781qQ!!@#')
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 
+# 로깅 설정
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 # 데이터베이스 연결 설정
 # Railway PostgreSQL 사용 (DATABASE_URL 환경변수)
 # 없으면 로컬 SQLite 사용
@@ -2960,7 +2965,10 @@ def send_telegram_message(message: str) -> bool:
         전송 성공 여부
     """
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        logger.warning("텔레그램 봇 설정이 없습니다. TELEGRAM_BOT_TOKEN과 TELEGRAM_CHAT_ID를 설정하세요.")
+        try:
+            logger.warning("텔레그램 봇 설정이 없습니다. TELEGRAM_BOT_TOKEN과 TELEGRAM_CHAT_ID를 설정하세요.")
+        except:
+            pass
         return False
     
     try:
@@ -2974,13 +2982,22 @@ def send_telegram_message(message: str) -> bool:
         response = requests.post(url, json=payload, timeout=10)
         
         if response.status_code == 200:
-            logger.info("텔레그램 메시지 전송 성공")
+            try:
+                logger.info("텔레그램 메시지 전송 성공")
+            except:
+                pass
             return True
         else:
-            logger.error(f"텔레그램 메시지 전송 실패: {response.status_code} - {response.text}")
+            try:
+                logger.error(f"텔레그램 메시지 전송 실패: {response.status_code} - {response.text}")
+            except:
+                pass
             return False
     except Exception as e:
-        logger.error(f"텔레그램 메시지 전송 오류: {e}")
+        try:
+            logger.error(f"텔레그램 메시지 전송 오류: {e}")
+        except:
+            pass
         return False
 
 @app.route('/api/send_admin_message', methods=['POST'])
@@ -3037,16 +3054,42 @@ def send_admin_message():
             message += f"\n\n<i>수신 시간: {time_str}</i>"
             
             # 텔레그램으로 전송
-            telegram_sent = send_telegram_message(message)
+            telegram_sent = False
+            try:
+                telegram_sent = send_telegram_message(message)
+            except Exception as telegram_error:
+                try:
+                    logger.error(f"텔레그램 메시지 전송 중 예외 발생: {telegram_error}")
+                except:
+                    pass
+                telegram_sent = False
             
             if telegram_sent:
-                return jsonify({
-                    'success': True,
-                    'message': '메시지가 전송되었습니다.'
-                }), 200
+                try:
+                    response_data = {
+                        'success': True,
+                        'message': '메시지가 전송되었습니다.'
+                    }
+                    return jsonify(response_data), 200
+                except Exception as json_error:
+                    try:
+                        logger.error(f"JSON 응답 생성 오류: {json_error}")
+                    except:
+                        pass
+                    # JSON 응답 생성 실패해도 성공으로 처리 (텔레그램 메시지는 전송됨)
+                    try:
+                        return jsonify({'success': True, 'message': '메시지가 전송되었습니다.'}), 200
+                    except:
+                        # JSON 응답도 실패하면 간단한 텍스트로
+                        from flask import Response
+                        return Response('{"success":true,"message":"메시지가 전송되었습니다."}', 
+                                      mimetype='application/json'), 200
             else:
                 # 텔레그램 전송 실패
-                logger.warning("텔레그램 메시지 전송 실패")
+                try:
+                    logger.warning("텔레그램 메시지 전송 실패")
+                except:
+                    pass
                 return jsonify({
                     'success': False,
                     'message': '메시지 전송에 실패했습니다. 나중에 다시 시도해주세요.'
