@@ -373,11 +373,12 @@
                 </div>
                 <div class="form-group">
                     <label>결제 방법</label>
-                    <select id="payment_method" style="margin-bottom: 5px;">
+                    <select id="payment_method" style="margin-bottom: 5px;" onchange="toggleCustomPaymentMethod('normal')">
                         <option value="">선택하세요</option>
+                        <option value="_custom_">직접 입력</option>
                     </select>
                     <input type="text" id="payment_method_custom" placeholder="직접 입력" style="display: none;">
-                    <small style="color: #666; font-size: 11px;">목록에서 선택하거나 직접 입력하세요.</small>
+                    <small style="color: #666; font-size: 11px;">목록에서 선택하거나 "직접 입력"을 선택하세요.</small>
                 </div>
                 <div class="form-group">
                     <label>비고</label>
@@ -473,11 +474,12 @@
                 </div>
                 <div class="form-group">
                     <label>결제 방법</label>
-                    <select id="modal_payment_method" style="margin-bottom: 5px;">
+                    <select id="modal_payment_method" style="margin-bottom: 5px;" onchange="toggleCustomPaymentMethod('modal')">
                         <option value="">선택하세요</option>
+                        <option value="_custom_">직접 입력</option>
                     </select>
                     <input type="text" id="modal_payment_method_custom" placeholder="직접 입력" style="display: none;">
-                    <small style="color: #666; font-size: 11px;">목록에서 선택하거나 직접 입력하세요.</small>
+                    <small style="color: #666; font-size: 11px;">목록에서 선택하거나 "직접 입력"을 선택하세요.</small>
                 </div>
                 <div class="form-group">
                     <label>비고</label>
@@ -1244,14 +1246,14 @@
                 // 결제 방법 드롭다운 채우기
                 if (result.success && result.payment_methods) {
                     const select = document.getElementById('modal_payment_method');
-                    while (select.options.length > 1) {
+                    while (select.options.length > 2) {
                         select.remove(1);
                     }
                     result.payment_methods.forEach(method => {
                         const option = document.createElement('option');
                         option.value = method;
                         option.textContent = method;
-                        select.appendChild(option);
+                        select.insertBefore(option, select.lastChild);
                     });
                 }
             } catch (error) {
