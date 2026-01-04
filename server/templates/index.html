@@ -281,10 +281,8 @@
             <button class="tab active" onclick="showTab('dashboard', this)">대시보드</button>
             <button class="tab" onclick="showTab('create', this)">사용자 생성</button>
             <button class="tab" onclick="showTab('list', this)">사용자 목록</button>
-            <button class="tab" onclick="showTab('extend', this)">구독 연장</button>
             <button class="tab" onclick="showTab('pricing', this)">사용료 설정</button>
             <button class="tab" onclick="showTab('statistics', this)">통계</button>
-            <button class="tab" onclick="showTab('logs', this)">로그</button>
         </div>
         
         <!-- 대시보드 -->
@@ -350,44 +348,6 @@
             <div id="user-list-container"></div>
         </div>
         
-        <!-- 구독 연장 -->
-        <div id="extend" class="tab-content">
-            <h2>사용자 구독 연장</h2>
-            <form id="extend-form">
-                <div class="form-group">
-                    <label>사용자 ID *</label>
-                    <input type="text" id="extend_user_id" required placeholder="사용자 ID 입력">
-                </div>
-                <div class="form-group">
-                    <label>연장 기간 *</label>
-                    <select id="extend_period" required>
-                        <option value="30">1개월 (30일)</option>
-                        <option value="90">3개월 (90일)</option>
-                        <option value="180">6개월 (180일)</option>
-                        <option value="365">1년 (365일)</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>결제 금액 (원)</label>
-                    <input type="number" id="extend_amount" min="0" value="0">
-                </div>
-                <div class="form-group">
-                    <label>결제 방법</label>
-                    <select id="payment_method" style="margin-bottom: 5px;" onchange="toggleCustomPaymentMethod('normal')">
-                        <option value="">선택하세요</option>
-                        <option value="_custom_">직접 입력</option>
-                    </select>
-                    <input type="text" id="payment_method_custom" placeholder="직접 입력" style="display: none;">
-                    <small style="color: #666; font-size: 11px;">목록에서 선택하거나 "직접 입력"을 선택하세요.</small>
-                </div>
-                <div class="form-group">
-                    <label>비고</label>
-                    <textarea id="extend_note" rows="3" placeholder="추가 메모"></textarea>
-                </div>
-                <button type="submit">구독 연장</button>
-            </form>
-        </div>
-        
         <!-- 사용료 설정 -->
         <div id="pricing" class="tab-content">
             <h2>사용료 설정</h2>
@@ -437,16 +397,6 @@
             </div>
         </div>
         
-        <!-- 로그 -->
-        <div id="logs" class="tab-content">
-            <h2>사용자 로그</h2>
-            <div class="form-group" style="margin-bottom: 20px;">
-                <label>사용자 ID 입력</label>
-                <input type="text" id="log_user_id" placeholder="사용자 ID 입력" style="width: 200px; display: inline-block; margin-right: 10px;">
-                <button onclick="loadUserLogs()" class="secondary">조회</button>
-            </div>
-            <div id="user-log-container"></div>
-        </div>
     </div>
     
     <!-- 구독 연장 모달 -->
@@ -768,40 +718,6 @@
             }
         });
         
-        // 기존 구독 연장 폼 (구독 연장 탭)
-        document.getElementById('extend-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const amountValue = document.getElementById('extend_amount').value;
-            const data = {
-                admin_key: ADMIN_KEY,
-                user_id: document.getElementById('extend_user_id').value.trim(),
-                period_days: parseInt(document.getElementById('extend_period').value),
-                amount: amountValue && amountValue !== '0' ? parseFloat(amountValue) : null, // null이면 서버에서 자동 적용
-                payment_method: (document.getElementById('payment_method').value || document.getElementById('payment_method_custom').value).trim(),
-                note: document.getElementById('extend_note').value.trim()
-            };
-            
-            try {
-                const response = await fetch(`${API_URL}/api/extend_user_subscription`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showAlert(`구독 연장 완료!<br>새 만료일: ${result.expiry_date.split('T')[0]}`, 'success');
-                    document.getElementById('extend-form').reset();
-                } else {
-                    showAlert(result.message, 'error');
-                }
-            } catch (error) {
-                showAlert('오류가 발생했습니다: ' + error.message, 'error');
-            }
-        });
-        
         // 대시보드 로드
         async function loadDashboard() {
             // 로딩 표시
@@ -999,7 +915,7 @@
                             <tr>
                                 <td><strong style="font-size: 12px;">${user.user_id}</strong></td>
                                 <td style="font-size: 12px;">${user.name || '-'}</td>
-                                <td class="text-truncate" title="${user.email || ''}" style="vertical-align: middle;">${emailDisplay}</td>
+                                <td style="vertical-align: middle; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${user.email || ''}">${emailDisplay}</td>
                                 <td class="date-short" style="vertical-align: middle;">${expiryDisplay}</td>
                                 <td style="vertical-align: middle;">
                                     ${statusBadge}
@@ -1300,28 +1216,6 @@
             }
         });
         
-        // 구독 연장 탭에서 기간 선택 시 사용료 자동 적용
-        document.getElementById('extend_period')?.addEventListener('change', async function() {
-            const periodDays = parseInt(this.value);
-            const amountInput = document.getElementById('extend_amount');
-            
-            try {
-                const response = await fetch(`${API_URL}/api/get_pricing_settings`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({admin_key: ADMIN_KEY})
-                });
-                
-                const result = await response.json();
-                
-                if (result.success && result.pricing && result.pricing[periodDays]) {
-                    amountInput.value = result.pricing[periodDays];
-                }
-            } catch (error) {
-                // 오류 발생 시 무시 (수동 입력 가능)
-            }
-        });
-        
         // 탭 전환 함수
         function showTab(tabName, element) {
             // 모든 탭과 콘텐츠 숨기기
@@ -1528,114 +1422,6 @@
                     loadPaymentMethods();
                 } else {
                     showAlert(result.message, 'error');
-                }
-            } catch (error) {
-                showAlert('오류가 발생했습니다: ' + error.message, 'error');
-            }
-        }
-        
-        // 사용자 로그 조회
-        async function loadUserLogs() {
-            const userId = document.getElementById('log_user_id').value.trim();
-            if (!userId) {
-                showAlert('사용자 ID를 입력해주세요.', 'error');
-                return;
-            }
-            
-            try {
-                const response = await fetch(`${API_URL}/api/get_user_logs`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        admin_key: ADMIN_KEY,
-                        user_id: userId
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    const container = document.getElementById('user-log-container');
-                    const user = result.user;
-                    const history = result.payment_history || [];
-                    
-                    const createdDate = user.created_date ? new Date(user.created_date).toLocaleDateString('ko-KR') : '-';
-                    
-                    let html = `
-                        <div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 5px;">
-                            <h3 style="font-size: 16px; margin-bottom: 10px;">사용자 정보</h3>
-                            <p><strong>사용자 ID:</strong> ${user.user_id}</p>
-                            <p><strong>이름:</strong> ${user.name || '-'}</p>
-                            <p><strong>이메일:</strong> ${user.email || '-'}</p>
-                            <p><strong>가입일:</strong> ${createdDate}</p>
-                        </div>
-                    `;
-                    
-                    if (history.length === 0) {
-                        html += '<p>연장 내역이 없습니다.</p>';
-                    } else {
-                        html += '<h3 style="font-size: 16px; margin-bottom: 10px;">연장 내역</h3>';
-                        html += '<table><thead><tr><th>날짜</th><th>기간</th><th>금액 (원)</th><th>결제 방법</th><th>비고</th><th>삭제</th></tr></thead><tbody>';
-                        
-                        history.forEach(payment => {
-                            const date = new Date(payment.payment_date);
-                            const dateStr = date.toLocaleDateString('ko-KR');
-                            html += `
-                                <tr>
-                                    <td style="font-size: 11px;">${dateStr}</td>
-                                    <td style="text-align: center;">${payment.period_text}</td>
-                                    <td style="text-align: right;">${Math.round(payment.amount).toLocaleString()}</td>
-                                    <td style="font-size: 11px;">${payment.payment_method || '-'}</td>
-                                    <td style="font-size: 11px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${payment.note || ''}">${payment.note || '-'}</td>
-                                    <td>
-                                        <button onclick="deletePaymentFromLog('${userId}', '${payment.payment_date}')" style="padding: 3px 8px; font-size: 10px; background: #dc3545;" class="secondary">삭제</button>
-                                    </td>
-                                </tr>
-                            `;
-                        });
-                        
-                        html += '</tbody></table>';
-                    }
-                    
-                    container.innerHTML = html;
-                } else {
-                    showAlert(result.message, 'error');
-                }
-            } catch (error) {
-                showAlert('오류가 발생했습니다: ' + error.message, 'error');
-            }
-        }
-        
-        // 로그에서 결제 내역 삭제 (결제 날짜로 찾기)
-        async function deletePaymentFromLog(userId, paymentDate) {
-            if (!confirm('정말로 이 연장 내역을 삭제하시겠습니까?')) {
-                return;
-            }
-            
-            // 결제 내역 목록을 가져와서 ID 찾기
-            try {
-                const response = await fetch(`${API_URL}/api/list_payments`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        admin_key: ADMIN_KEY,
-                        user_id: userId,
-                        limit: 100
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    const payments = result.payments || [];
-                    const payment = payments.find(p => p.payment_date === paymentDate || p.payment_date.startsWith(paymentDate.split('T')[0]));
-                    
-                    if (payment) {
-                        await deletePayment(payment.id);
-                        loadUserLogs(); // 로그 다시 로드
-                    } else {
-                        showAlert('결제 내역을 찾을 수 없습니다.', 'error');
-                    }
                 }
             } catch (error) {
                 showAlert('오류가 발생했습니다: ' + error.message, 'error');
