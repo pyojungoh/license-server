@@ -424,22 +424,49 @@ class UserAuthManager:
                 timeout=10
             )
             
-            try:
-                data = response.json()
-            except (ValueError, json.JSONDecodeError) as e:
-                logger.error(f"서버 응답 JSON 파싱 실패: {e}, 응답 내용: {response.text[:200]}")
-                return False, f"서버 응답을 처리할 수 없습니다. (상태 코드: {response.status_code})"
-            
+            # 응답 상태 코드에 따른 처리
             if response.status_code == 200:
-                if data.get('success'):
-                    logger.info(f"관리자 메시지 전송 성공: {user_id}")
-                    return True, data.get('message', '메시지가 전송되었습니다.')
-                else:
-                    return False, data.get('message', '메시지 전송 실패')
+                try:
+                    data = response.json()
+                    if data.get('success'):
+                        logger.info(f"관리자 메시지 전송 성공: {user_id}")
+                        return True, data.get('message', '메시지가 전송되었습니다.')
+                    else:
+                        error_msg = data.get('message', '메시지 전송 실패')
+                        logger.warning(f"관리자 메시지 전송 실패: {error_msg}")
+                        return False, error_msg
+                except (ValueError, json.JSONDecodeError) as e:
+                    logger.error(f"서버 응답 JSON 파싱 실패: {e}, 응답 내용: {response.text[:200]}")
+                    return False, "서버 응답을 처리할 수 없습니다."
+            elif response.status_code == 400:
+                # 클라이언트 오류 (필수 항목 누락 등)
+                try:
+                    data = response.json()
+                    error_msg = data.get('message', '요청 데이터가 올바르지 않습니다.')
+                    logger.warning(f"관리자 메시지 전송 실패 (400): {error_msg}")
+                    return False, error_msg
+                except (ValueError, json.JSONDecodeError):
+                    return False, "필수 항목을 모두 입력해주세요."
+            elif response.status_code == 500:
+                # 서버 오류 (하지만 메시지는 전송되었을 수 있음)
+                try:
+                    data = response.json()
+                    error_msg = data.get('message', '서버 오류가 발생했습니다.')
+                    logger.error(f"관리자 메시지 전송 서버 오류 (500): {error_msg}")
+                    # 500 에러지만 메시지는 도착했을 수 있으므로 안내
+                    return False, f"{error_msg}\n(메시지는 전송되었을 수 있습니다. 텔레그램을 확인해주세요.)"
+                except (ValueError, json.JSONDecodeError):
+                    return False, "서버 오류가 발생했습니다.\n(메시지는 전송되었을 수 있습니다. 텔레그램을 확인해주세요.)"
             else:
-                error_msg = data.get('message', f'서버 오류가 발생했습니다. (상태 코드: {response.status_code})')
-                logger.error(f"관리자 메시지 전송 실패 (상태 코드 {response.status_code}): {error_msg}")
-                return False, error_msg
+                # 기타 오류
+                try:
+                    data = response.json()
+                    error_msg = data.get('message', f'서버 오류가 발생했습니다. (상태 코드: {response.status_code})')
+                    logger.error(f"관리자 메시지 전송 실패 (상태 코드 {response.status_code}): {error_msg}")
+                    return False, error_msg
+                except (ValueError, json.JSONDecodeError) as e:
+                    logger.error(f"서버 응답 JSON 파싱 실패: {e}, 응답 내용: {response.text[:200]}")
+                    return False, f"서버 응답을 처리할 수 없습니다. (상태 코드: {response.status_code})"
                 
         except requests.exceptions.ConnectionError:
             logger.error("서버 연결 실패")

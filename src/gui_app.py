@@ -960,21 +960,38 @@ class HanjinAutomationApp:
         
         def send_message():
             """메시지 전송"""
-            category = category_var.get()
-            title = title_var.get().strip()
-            content = content_text.get("1.0", tk.END).strip()
-            phone = phone_var.get().strip()
+            # 아이디 확인 (이미 설정되어 있어야 함)
+            user_id = user_id_var.get().strip()
+            if not user_id:
+                status_label.config(text="아이디가 없습니다. 다시 로그인해주세요.", foreground="red")
+                messagebox.showerror("오류", "아이디가 없습니다. 다시 로그인해주세요.")
+                msg_window.destroy()
+                return
             
-            # 유효성 검사
+            # 종류 확인
+            category = category_var.get()
+            if not category:
+                status_label.config(text="종류를 선택해주세요.", foreground="red")
+                messagebox.showwarning("경고", "종류를 선택해주세요.")
+                return
+            
+            # 제목 확인
+            title = title_var.get().strip()
             if not title:
                 status_label.config(text="제목을 입력해주세요.", foreground="red")
+                messagebox.showwarning("경고", "제목을 입력해주세요.")
                 title_entry.focus()
                 return
             
+            # 내용 확인
+            content = content_text.get("1.0", tk.END).strip()
             if not content:
                 status_label.config(text="내용을 입력해주세요.", foreground="red")
+                messagebox.showwarning("경고", "내용을 입력해주세요.")
                 content_text.focus()
                 return
+            
+            phone = phone_var.get().strip()
             
             # 전송
             status_label.config(text="전송 중...", foreground="blue")

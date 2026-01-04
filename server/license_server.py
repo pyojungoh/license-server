@@ -3033,22 +3033,32 @@ def send_admin_message():
         message += f"\n\n<i>수신 시간: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>"
         
         # 텔레그램으로 전송
-        if send_telegram_message(message):
+        telegram_sent = send_telegram_message(message)
+        
+        if telegram_sent:
             return jsonify({
                 'success': True,
                 'message': '메시지가 전송되었습니다.'
-            })
+            }), 200
         else:
+            # 텔레그램 전송 실패해도 에러 응답 (이미 전송됐을 수도 있으므로)
+            logger.warning("텔레그램 메시지 전송 실패했지만 요청은 처리됨")
             return jsonify({
                 'success': False,
                 'message': '메시지 전송에 실패했습니다. 나중에 다시 시도해주세요.'
             }), 500
             
     except Exception as e:
-        logger.error(f"관리자 메시지 전송 오류: {e}")
+        logger.error(f"관리자 메시지 전송 오류: {e}", exc_info=True)
+        # 에러 발생해도 텔레그램 메시지는 전송되었을 수 있으므로 명확한 에러 메시지
+        try:
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+        except:
+            pass
         return jsonify({
             'success': False,
-            'message': f'오류가 발생했습니다: {str(e)}'
+            'message': f'서버 오류가 발생했습니다: {str(e)}'
         }), 500
 
 if __name__ == '__main__':
