@@ -3232,14 +3232,21 @@ def get_pricing_settings():
         cursor = conn.cursor()
     
     try:
-        if USE_POSTGRESQL:
-            cursor.execute("SELECT period_days, amount FROM subscription_pricing ORDER BY period_days")
-            rows = cursor.fetchall()
-            pricing = {row['period_days']: float(row['amount']) for row in rows}
-        else:
-            cursor.execute("SELECT period_days, amount FROM subscription_pricing ORDER BY period_days")
-            rows = cursor.fetchall()
-            pricing = {row[0]: float(row[1]) for row in rows}
+        # 사용료 설정 조회 (테이블이 없을 수 있으므로 try-except로 감싸기)
+        pricing = {}
+        try:
+            if USE_POSTGRESQL:
+                cursor.execute("SELECT period_days, amount FROM subscription_pricing ORDER BY period_days")
+                rows = cursor.fetchall()
+                pricing = {row['period_days']: float(row['amount']) for row in rows}
+            else:
+                cursor.execute("SELECT period_days, amount FROM subscription_pricing ORDER BY period_days")
+                rows = cursor.fetchall()
+                pricing = {row[0]: float(row[1]) for row in rows}
+        except Exception as e:
+            # 테이블이 없거나 오류 발생 시 빈 딕셔너리 반환
+            logger.warning(f"사용료 설정 조회 실패 (테이블 없을 수 있음): {e}")
+            pricing = {}
         
         # 결제 방법 목록도 함께 반환 (테이블이 없을 수 있으므로 try-except로 감싸기)
         payment_methods = []
@@ -3331,14 +3338,20 @@ def get_payment_methods():
         cursor = conn.cursor()
     
     try:
-        if USE_POSTGRESQL:
-            cursor.execute("SELECT method_name FROM payment_methods ORDER BY method_name")
-            rows = cursor.fetchall()
-            methods = [row['method_name'] for row in rows]
-        else:
-            cursor.execute("SELECT method_name FROM payment_methods ORDER BY method_name")
-            rows = cursor.fetchall()
-            methods = [row[0] for row in rows]
+        methods = []
+        try:
+            if USE_POSTGRESQL:
+                cursor.execute("SELECT method_name FROM payment_methods ORDER BY method_name")
+                rows = cursor.fetchall()
+                methods = [row['method_name'] for row in rows]
+            else:
+                cursor.execute("SELECT method_name FROM payment_methods ORDER BY method_name")
+                rows = cursor.fetchall()
+                methods = [row[0] for row in rows]
+        except Exception as e:
+            # 테이블이 없거나 오류 발생 시 빈 배열 반환
+            logger.warning(f"결제 방법 목록 조회 실패 (테이블 없을 수 있음): {e}")
+            methods = []
         
         return jsonify({
             'success': True,

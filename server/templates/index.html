@@ -491,6 +491,15 @@
         </div>
     </div>
     
+    <!-- 사용자 로그 모달 -->
+    <div id="userLogModal" class="modal">
+        <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <span class="close" onclick="closeUserLogModal()">&times;</span>
+            <h2 style="font-size: 18px; margin-bottom: 15px;">사용자 로그</h2>
+            <div id="user-log-modal-container"></div>
+        </div>
+    </div>
+    
     <script>
         const API_URL = window.location.origin;
         
@@ -587,9 +596,138 @@
         
         // 모달 외부 클릭 시 닫기
         window.onclick = function(event) {
-            const modal = document.getElementById('extendModal');
-            if (event.target == modal) {
+            const extendModal = document.getElementById('extendModal');
+            const userLogModal = document.getElementById('userLogModal');
+            if (event.target == extendModal) {
                 closeExtendModal();
+            }
+            if (event.target == userLogModal) {
+                closeUserLogModal();
+            }
+        }
+        
+        // 사용자 로그 모달 열기
+        async function openUserLogModal(userId) {
+            document.getElementById('userLogModal').style.display = 'block';
+            document.getElementById('user-log-modal-container').innerHTML = '<p>로딩 중...</p>';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/get_user_logs`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        admin_key: ADMIN_KEY,
+                        user_id: userId
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    const container = document.getElementById('user-log-modal-container');
+                    const user = result.user;
+                    const history = result.payment_history || [];
+                    
+                    const createdDate = user.created_date ? new Date(user.created_date).toLocaleDateString('ko-KR') : '-';
+                    
+                    let html = `
+                        <div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 5px;">
+                            <h3 style="font-size: 16px; margin-bottom: 10px;">사용자 정보</h3>
+                            <p><strong>사용자 ID:</strong> ${user.user_id}</p>
+                            <p><strong>이름:</strong> ${user.name || '-'}</p>
+                            <p><strong>이메일:</strong> ${user.email || '-'}</p>
+                            <p><strong>가입일:</strong> ${createdDate}</p>
+                        </div>
+                    `;
+                    
+                    if (history.length === 0) {
+                        html += '<p>연장 내역이 없습니다.</p>';
+                    } else {
+                        html += '<h3 style="font-size: 16px; margin-bottom: 10px;">연장 내역</h3>';
+                        html += '<table style="width: 100%;"><thead><tr><th>날짜</th><th>기간</th><th>금액 (원)</th><th>결제 방법</th><th>비고</th><th>삭제</th></tr></thead><tbody>';
+                        
+                        history.forEach(payment => {
+                            const date = new Date(payment.payment_date);
+                            const dateStr = date.toLocaleDateString('ko-KR');
+                            html += `
+                                <tr>
+                                    <td style="font-size: 12px;">${dateStr}</td>
+                                    <td style="text-align: center;">${payment.period_text}</td>
+                                    <td style="text-align: right;">${Math.round(payment.amount).toLocaleString()}</td>
+                                    <td style="font-size: 12px;">${payment.payment_method || '-'}</td>
+                                    <td style="font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${payment.note || ''}">${payment.note || '-'}</td>
+                                    <td>
+                                        <button onclick="deletePaymentFromModal('${userId}', '${payment.payment_date}')" style="padding: 3px 8px; font-size: 10px; background: #dc3545;" class="secondary">삭제</button>
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                        
+                        html += '</tbody></table>';
+                    }
+                    
+                    container.innerHTML = html;
+                } else {
+                    document.getElementById('user-log-modal-container').innerHTML = `<p style="color: red;">${result.message}</p>`;
+                }
+            } catch (error) {
+                document.getElementById('user-log-modal-container').innerHTML = `<p style="color: red;">오류가 발생했습니다: ${error.message}</p>`;
+            }
+        }
+        
+        // 사용자 로그 모달 닫기
+        function closeUserLogModal() {
+            document.getElementById('userLogModal').style.display = 'none';
+        }
+        
+        // 모달에서 결제 내역 삭제
+        async function deletePaymentFromModal(userId, paymentDate) {
+            if (!confirm('정말로 이 연장 내역을 삭제하시겠습니까?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/api/list_payments`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        admin_key: ADMIN_KEY,
+                        user_id: userId,
+                        limit: 100
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    const payments = result.payments || [];
+                    const payment = payments.find(p => p.payment_date === paymentDate || p.payment_date.startsWith(paymentDate.split('T')[0]));
+                    
+                    if (payment) {
+                        const deleteResponse = await fetch(`${API_URL}/api/delete_payment`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                admin_key: ADMIN_KEY,
+                                payment_id: payment.id
+                            })
+                        });
+                        
+                        const deleteResult = await deleteResponse.json();
+                        
+                        if (deleteResult.success) {
+                            showAlert(deleteResult.message, 'success');
+                            openUserLogModal(userId); // 모달 다시 로드
+                            loadUserList(); // 목록도 새로고침
+                        } else {
+                            showAlert(deleteResult.message, 'error');
+                        }
+                    } else {
+                        showAlert('결제 내역을 찾을 수 없습니다.', 'error');
+                    }
+                }
+            } catch (error) {
+                showAlert('오류가 발생했습니다: ' + error.message, 'error');
             }
         }
         
@@ -886,7 +1024,8 @@
                                 <td class="date-short">${createdDate}</td>
                                 <td class="date-short">${lastLogin}</td>
                                 <td>
-                                    <button onclick="openExtendModal('${user.user_id}')" style="padding: 4px 8px; font-size: 11px;">연장</button>
+                                    <button onclick="openExtendModal('${user.user_id}')" style="padding: 4px 8px; font-size: 11px; margin-right: 5px;">연장</button>
+                                    <button onclick="openUserLogModal('${user.user_id}')" style="padding: 4px 8px; font-size: 11px; background: #17a2b8;">로그</button>
                                 </td>
                             </tr>
                         `;
