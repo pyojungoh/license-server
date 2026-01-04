@@ -991,7 +991,13 @@ class HanjinAutomationApp:
                 content_text.focus()
                 return
             
+            # 전화번호 확인 (필수)
             phone = phone_var.get().strip()
+            if not phone:
+                status_label.config(text="회신받을 전화번호를 입력해주세요.", foreground="red")
+                messagebox.showwarning("경고", "회신받을 전화번호를 입력해주세요.")
+                phone_entry.focus()
+                return
             
             # 전송
             status_label.config(text="전송 중...", foreground="blue")
