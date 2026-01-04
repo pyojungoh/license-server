@@ -3017,7 +3017,10 @@ def send_admin_message():
         
         # 텔레그램 메시지 포맷팅
         try:
-            now = datetime.datetime.now()
+            # 한국 표준시(KST, UTC+9)로 시간 변환
+            from datetime import timezone, timedelta
+            kst = timezone(timedelta(hours=9))  # UTC+9
+            now = datetime.datetime.now(timezone.utc).astimezone(kst)
             time_str = now.strftime('%Y-%m-%d %H:%M:%S')
             
             message = f"""<b>📩 관리자 메시지</b>
