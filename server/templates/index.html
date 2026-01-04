@@ -789,21 +789,22 @@
                         if (user.devices && user.devices.length > 0) {
                             user.devices.forEach((device, index) => {
                                 const deviceName = device.device_name ? ` (${device.device_name})` : '';
-                                const activeBadge = device.is_active ? '<span class="badge badge-active" style="font-size: 10px; margin-left: 5px;">활성</span>' : '<span class="badge badge-warning" style="font-size: 10px; margin-left: 5px;">비활성</span>';
+                                const activeBadge = device.is_active ? '<span class="badge badge-active" style="font-size: 9px; margin-left: 3px;">활성</span>' : '<span class="badge badge-warning" style="font-size: 9px; margin-left: 3px;">비활성</span>';
                                 const uuidShort = device.device_uuid.substring(0, 8) + '...';
-                                deviceHtml += `<div style="margin: 3px 0; font-size: 12px;">
-                                    <div style="display: flex; align-items: center; gap: 5px;">
-                                        <span title="${device.device_uuid}">${uuidShort}${deviceName}${activeBadge}</span>
-                                        <button onclick="deleteUserDevice('${user.user_id}', '${device.device_uuid}')" class="secondary" style="padding: 2px 8px; font-size: 11px;">삭제</button>
+                                deviceHtml += `<div style="margin: 2px 0; font-size: 11px;">
+                                    <div style="display: flex; align-items: center; gap: 4px;">
+                                        <span title="${device.device_uuid}" style="font-size: 10px;">${uuidShort}${deviceName}</span>
+                                        ${activeBadge}
+                                        <button onclick="deleteUserDevice('${user.user_id}', '${device.device_uuid}')" class="secondary" style="padding: 2px 6px; font-size: 10px;">삭제</button>
                                     </div>
-                                    <div style="font-size: 9px; color: #666; margin-top: 2px;">
-                                        등록: ${device.registered_date ? new Date(device.registered_date).toLocaleDateString('ko-KR', {year: 'numeric', month: '2-digit', day: '2-digit'}) : '-'} | 
-                                        최근: ${device.last_used ? new Date(device.last_used).toLocaleDateString('ko-KR', {year: 'numeric', month: '2-digit', day: '2-digit'}) : '-'}
+                                    <div style="font-size: 9px; color: #666; margin-top: 1px;">
+                                        ${device.registered_date ? new Date(device.registered_date).toLocaleDateString('ko-KR', {year: '2-digit', month: '2-digit', day: '2-digit'}) : '-'} | 
+                                        ${device.last_used ? new Date(device.last_used).toLocaleDateString('ko-KR', {year: '2-digit', month: '2-digit', day: '2-digit'}) : '-'}
                                     </div>
                                 </div>`;
                             });
                         } else {
-                            deviceHtml = '<span style="color: #999;">등록된 기기 없음</span>';
+                            deviceHtml = '<span style="color: #999; font-size: 11px;">등록된 기기 없음</span>';
                         }
                         
                         // 통계 정보
