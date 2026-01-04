@@ -14,6 +14,7 @@ object Config {
     const val ESP32_DEVICE_NAME = "한진택배 스캐너"
     const val ESP32_SERVICE_UUID = "12345678-1234-1234-1234-123456789ABC"
     const val ESP32_CHARACTERISTIC_UUID = "12345678-1234-1234-1234-123456789DEF"
+    const val ESP32_HEARTBEAT_CHAR_UUID = "12345678-1234-1234-1234-123456789012"
     
     // API 엔드포인트
     const val API_LOGIN = "/api/login"

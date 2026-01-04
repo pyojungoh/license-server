@@ -28,6 +28,14 @@ a = Analysis(
         'threading',
         'datetime',
         'logging',
+        'bluetooth_controller',
+        'excel_reader',
+        'utils',
+        'user_auth_manager',
+        'hardware_id',
+        'colorama',
+        'hashlib',
+        'base64',
     ],
     hookspath=[],
     hooksconfig={},
@@ -63,6 +71,7 @@ exe = EXE(
     entitlements_file=None,
     icon=None,  # 아이콘 파일이 있으면 여기에 경로 지정
 )
+
 
 
 

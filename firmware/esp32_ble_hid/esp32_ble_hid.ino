@@ -28,9 +28,16 @@ bool wasConnected = false;
 // 인증 상태 (모바일 앱으로부터 토큰을 받아야만 true가 됨)
 bool isActivated = false;
 
+// 토큰 및 Heartbeat 시간 추적
+unsigned long tokenReceivedTime = 0;
+unsigned long lastHeartbeatTime = 0;
+const unsigned long TOKEN_VALIDITY_MS = 3600000;  // 토큰 유효 시간: 1시간 (1000 * 60 * 60)
+const unsigned long HEARTBEAT_TIMEOUT_MS = 60000;  // Heartbeat 타임아웃: 60초 (앱이 이 시간 동안 신호를 안 보내면 꺼진 것으로 간주)
+
 // Custom BLE Service UUID (온라인 UUID 생성기로 생성한 고유값)
 #define SERVICE_UUID        "12345678-1234-1234-1234-123456789ABC"
 #define CHARACTERISTIC_UUID "12345678-1234-1234-1234-123456789DEF"
+#define HEARTBEAT_CHAR_UUID "12345678-1234-1234-1234-123456789012"  // Heartbeat용 Characteristic UUID
 
 // 토큰 수신 콜백 클래스
 class TokenReceiveCallbacks: public BLECharacteristicCallbacks {
@@ -46,13 +53,27 @@ class TokenReceiveCallbacks: public BLECharacteristicCallbacks {
             // 나중에 WiFi를 통해 서버 API 호출하여 검증
             if (rxValue.length() > 10) {  // 최소 토큰 길이 체크
                 isActivated = true;
-                Serial.println("✓ 인증 성공! 키보드 기능 활성화됨");
+                tokenReceivedTime = millis();  // 토큰 수신 시간 저장
+                lastHeartbeatTime = millis();  // 초기 Heartbeat 시간 설정
+                Serial.println("✓ 인증 성공! 키보드 기능 활성화됨 (1시간 유효, 앱이 켜져 있어야 함)");
                 digitalWrite(LED_PIN, HIGH);  // LED 켜기 (인증 성공 표시)
             } else {
                 isActivated = false;
+                tokenReceivedTime = 0;
                 Serial.println("✗ 인증 실패: 유효하지 않은 토큰");
                 digitalWrite(LED_PIN, LOW);
             }
+        }
+    }
+};
+
+// Heartbeat 수신 콜백 클래스 (앱 생존 확인용)
+class HeartbeatCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+        String rxValue = pCharacteristic->getValue();
+        if (rxValue == "HEARTBEAT" || rxValue.length() > 0) {
+            lastHeartbeatTime = millis();  // Heartbeat 수신 시간 업데이트
+            // Serial.println("✓ Heartbeat 수신 (앱 실행 중)");
         }
     }
 };
@@ -72,7 +93,7 @@ void setup() {
   bleKeyboard.begin();
   Serial.println("✓ 블루투스 키보드 초기화 완료");
   
-  // Custom BLE Service 추가 (토큰 수신용)
+  // Custom BLE Service 추가 (토큰 수신용 + Heartbeat용)
   BLEServer *pServer = BLEDevice::getServer();
   
   if (pServer != nullptr) {
@@ -85,15 +106,23 @@ void setup() {
       BLECharacteristic::PROPERTY_WRITE
     );
     
+    // Heartbeat 수신용 특성(Characteristic) 생성 (WRITE 속성)
+    BLECharacteristic *pHeartbeatCharacteristic = pTokenService->createCharacteristic(
+      HEARTBEAT_CHAR_UUID,
+      BLECharacteristic::PROPERTY_WRITE
+    );
+    
     // 콜백 함수 연결
     pTokenCharacteristic->setCallbacks(new TokenReceiveCallbacks());
+    pHeartbeatCharacteristic->setCallbacks(new HeartbeatCallbacks());
     
     // 서비스 시작
     pTokenService->start();
     
     Serial.println("✓ 토큰 수신 서비스 시작됨");
     Serial.println("  Service UUID: " + String(SERVICE_UUID));
-    Serial.println("  Characteristic UUID: " + String(CHARACTERISTIC_UUID));
+    Serial.println("  Token Characteristic UUID: " + String(CHARACTERISTIC_UUID));
+    Serial.println("  Heartbeat Characteristic UUID: " + String(HEARTBEAT_CHAR_UUID));
   } else {
     Serial.println("✗ BLE 서버를 가져올 수 없습니다.");
   }
@@ -124,8 +153,26 @@ void loop() {
     }
   }
   
+  // 토큰 및 Heartbeat 유효성 검사
+  unsigned long currentTime = millis();
+  bool isTokenValid = (tokenReceivedTime > 0) && ((currentTime - tokenReceivedTime) < TOKEN_VALIDITY_MS);
+  bool isAppAlive = (lastHeartbeatTime > 0) && ((currentTime - lastHeartbeatTime) < HEARTBEAT_TIMEOUT_MS);
+  
+  // 토큰 만료 또는 앱이 꺼진 경우 비활성화
+  if (isActivated && (!isTokenValid || !isAppAlive)) {
+    isActivated = false;
+    tokenReceivedTime = 0;
+    lastHeartbeatTime = 0;
+    digitalWrite(LED_PIN, LOW);
+    if (!isTokenValid) {
+      Serial.println("⏰ 토큰 만료됨 (1시간 경과) - 앱에서 재인증 필요");
+    } else if (!isAppAlive) {
+      Serial.println("📱 앱이 꺼진 것으로 감지됨 - 앱을 켜고 재인증 필요");
+    }
+  }
+  
   // 인증되어 있고 연결되어 있을 때만 키보드 기능 동작
-  if (isActivated && isConnected) {
+  if (isActivated && isConnected && isTokenValid && isAppAlive) {
     // 시리얼로부터 데이터 수신
     if (Serial.available() > 0) {
       // 한 줄 읽기 (개행 문자까지)

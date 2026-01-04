@@ -17,3 +17,7 @@ dependencyResolutionManagement {
 rootProject.name = "HanjinAutomation"
 include(":app")
 
+
+
+
+

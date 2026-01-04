@@ -5,8 +5,8 @@
     "timeout": 1.0
   },
   "delays": {
-    "min_between": 2.0,
-    "max_between": 3.0
+    "min_between": 1.0,
+    "max_between": 2.0
   },
   "retry": {
     "max_attempts": 3,

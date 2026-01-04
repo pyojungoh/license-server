@@ -22,6 +22,8 @@ class BLEService(private val context: Context) {
     private var targetDevice: BluetoothDevice? = null
     private var serviceUuid: BluetoothGattService? = null
     private var characteristic: BluetoothGattCharacteristic? = null
+    private var heartbeatCharacteristic: BluetoothGattCharacteristic? = null
+    private var heartbeatTimer: Timer? = null
     
     var onDeviceFound: ((BluetoothDevice) -> Unit)? = null
     var onConnected: (() -> Unit)? = null
@@ -34,19 +36,48 @@ class BLEService(private val context: Context) {
             val device = result.device
             val deviceName = device.name
             
-            Log.d("BLEService", "스캔 결과: $deviceName, Address: ${device.address}")
+            // 모든 스캔 결과 로그 (디버깅용)
+            if (deviceName != null) {
+                Log.d("BLEService", "스캔 결과: name=$deviceName, address=${device.address}, rssi=${result.rssi}")
+            } else {
+                Log.d("BLEService", "스캔 결과: name=null, address=${device.address}, rssi=${result.rssi}")
+            }
             
             // ESP32 장치 이름으로 필터링
             if (deviceName == Config.ESP32_DEVICE_NAME) {
-                Log.d("BLEService", "ESP32 장치 발견: $deviceName")
+                Log.d("BLEService", "✓✓✓ ESP32 장치 발견: $deviceName (${device.address})")
                 stopScan()
                 targetDevice = device
                 onDeviceFound?.invoke(device)
             }
         }
         
+        override fun onBatchScanResults(results: MutableList<ScanResult>?) {
+            super.onBatchScanResults(results)
+            results?.forEach { result ->
+                val device = result.device
+                val deviceName = device.name
+                
+                if (deviceName != null) {
+                    Log.d("BLEService", "배치 스캔 결과: name=$deviceName, address=${device.address}, rssi=${result.rssi}")
+                }
+                
+                // ESP32 장치 이름으로 필터링 (부분 매칭 지원)
+                if (deviceName != null && (
+                    deviceName == Config.ESP32_DEVICE_NAME || 
+                    deviceName.startsWith("한진택배")
+                )) {
+                    Log.d("BLEService", "✓✓✓ ESP32 장치 발견 (배치): $deviceName (${device.address})")
+                    stopScan()
+                    targetDevice = device
+                    onDeviceFound?.invoke(device)
+                }
+            }
+        }
+        
         override fun onScanFailed(errorCode: Int) {
-            Log.e("BLEService", "스캔 실패: $errorCode")
+            super.onScanFailed(errorCode)
+            Log.e("BLEService", "스캔 실패: errorCode=$errorCode")
         }
     }
     
@@ -76,9 +107,13 @@ class BLEService(private val context: Context) {
                     characteristic = service.getCharacteristic(
                         UUID.fromString(Config.ESP32_CHARACTERISTIC_UUID)
                     )
+                    heartbeatCharacteristic = service.getCharacteristic(
+                        UUID.fromString(Config.ESP32_HEARTBEAT_CHAR_UUID)
+                    )
                     
-                    if (characteristic != null) {
-                        Log.d("BLEService", "Characteristic 찾음")
+                    if (characteristic != null && heartbeatCharacteristic != null) {
+                        Log.d("BLEService", "Characteristic 찾음 (토큰 + Heartbeat)")
+                        startHeartbeat()  // Heartbeat 시작
                         onConnected?.invoke()
                     } else {
                         Log.e("BLEService", "Characteristic을 찾을 수 없음")
@@ -111,21 +146,51 @@ class BLEService(private val context: Context) {
         bluetoothAdapter = bluetoothManager.adapter
         bluetoothLeScanner = bluetoothAdapter?.bluetoothLeScanner
         
+        if (bluetoothAdapter == null) {
+            Log.e("BLEService", "블루투스 어댑터를 사용할 수 없음")
+            return
+        }
+        
+        // 1단계: 이미 페어링된 기기에서 ESP32 찾기 (BLE HID로 연결된 경우)
+        Log.d("BLEService", "페어링된 기기 목록 확인 중...")
+        val bondedDevices = bluetoothAdapter?.bondedDevices
+        if (bondedDevices == null || bondedDevices.isEmpty()) {
+            Log.d("BLEService", "페어링된 기기가 없습니다.")
+        } else {
+            Log.d("BLEService", "페어링된 기기 수: ${bondedDevices.size}")
+            bondedDevices.forEach { device ->
+                val deviceName = device.name
+                Log.d("BLEService", "페어링된 기기: name=$deviceName, address=${device.address}, type=${device.type}")
+                
+                // 이름이 정확히 일치하거나, "한진택배"로 시작하는 경우 ESP32로 인식
+                // (이름이 깨져서 저장된 경우를 대비)
+                if (deviceName != null && (
+                    deviceName == Config.ESP32_DEVICE_NAME || 
+                    deviceName.startsWith("한진택배")
+                )) {
+                    Log.d("BLEService", "✓✓✓ ESP32 발견 (페어링된 기기): $deviceName (${device.address})")
+                    stopScan() // 스캔 중지
+                    targetDevice = device
+                    onDeviceFound?.invoke(device)
+                    return
+                }
+            }
+        }
+        
+        // 2단계: 페어링된 기기에서 못 찾으면 BLE 스캔 시작
         if (bluetoothLeScanner == null) {
             Log.e("BLEService", "BLE 스캐너를 사용할 수 없음")
             return
         }
         
-        val filter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(UUID.fromString(Config.ESP32_SERVICE_UUID)))
-            .build()
-        
+        // 필터 없이 모든 BLE 장치 스캔 (이름으로 필터링은 콜백에서 처리)
+        // ESP32가 Custom Service를 어드버타이징하지 않을 수 있어서 필터를 제거
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
         
-        bluetoothLeScanner?.startScan(listOf(filter), settings, scanCallback)
-        Log.d("BLEService", "BLE 스캔 시작")
+        bluetoothLeScanner?.startScan(null, settings, scanCallback) // 필터 없이 스캔
+        Log.d("BLEService", "BLE 스캔 시작 (필터 없음 - 모든 장치 스캔)")
     }
     
     @SuppressLint("MissingPermission")
@@ -166,12 +231,45 @@ class BLEService(private val context: Context) {
     
     @SuppressLint("MissingPermission")
     fun disconnect() {
+        stopHeartbeat()  // Heartbeat 중지
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null
         serviceUuid = null
         characteristic = null
+        heartbeatCharacteristic = null
         Log.d("BLEService", "ESP32 연결 종료")
+    }
+    
+    // Heartbeat 전송 시작 (30초마다)
+    private fun startHeartbeat() {
+        stopHeartbeat()  // 기존 타이머 중지
+        
+        heartbeatTimer = Timer()
+        heartbeatTimer?.scheduleAtFixedRate(object : TimerTask() {
+            override fun run() {
+                sendHeartbeat()
+            }
+        }, 0, 30000)  // 30초마다 실행
+        
+        Log.d("BLEService", "Heartbeat 시작 (30초 간격)")
+    }
+    
+    // Heartbeat 전송 중지
+    private fun stopHeartbeat() {
+        heartbeatTimer?.cancel()
+        heartbeatTimer = null
+        Log.d("BLEService", "Heartbeat 중지")
+    }
+    
+    // Heartbeat 전송
+    @SuppressLint("MissingPermission")
+    private fun sendHeartbeat() {
+        if (heartbeatCharacteristic != null && bluetoothGatt != null) {
+            heartbeatCharacteristic?.value = "HEARTBEAT".toByteArray(Charsets.UTF_8)
+            bluetoothGatt?.writeCharacteristic(heartbeatCharacteristic)
+            // Log.d("BLEService", "Heartbeat 전송")
+        }
     }
 }
 

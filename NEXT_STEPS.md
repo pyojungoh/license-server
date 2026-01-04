@@ -67,3 +67,7 @@ Get-PnpDevice -Class Ports | Where-Object {$_.Status -eq "OK"}
 
 
 
+
+
+
+
