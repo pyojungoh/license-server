@@ -230,6 +230,16 @@ def init_db():
                 )
             """)
             
+            # 사용료 설정 테이블
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS subscription_pricing (
+                    id SERIAL PRIMARY KEY,
+                    period_days INTEGER UNIQUE NOT NULL,
+                    amount DECIMAL(10, 2) NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # 사용자 기기 등록 테이블 (1인 1기기 정책용)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS user_devices (
@@ -411,6 +421,16 @@ def init_db():
                     payment_method TEXT,
                     note TEXT,
                     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                )
+            """)
+            
+            # 사용료 설정 테이블
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS subscription_pricing (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    period_days INTEGER UNIQUE NOT NULL,
+                    amount REAL NOT NULL,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             
@@ -2699,12 +2719,41 @@ def extend_user_subscription():
     
     user_id = data.get('user_id', '').strip()
     period_days = data.get('period_days', 30)
-    amount = data.get('amount', 0)
+    amount = data.get('amount', None)  # None이면 자동으로 가격 설정에서 가져옴
     payment_method = data.get('payment_method', '')
     note = data.get('note', '')
     
     if not user_id:
         return jsonify({'success': False, 'message': '사용자 ID가 필요합니다.'}), 400
+    
+    # amount가 없으면 사용료 설정에서 자동으로 가져오기
+    if amount is None:
+        conn_temp = get_db_connection()
+        if USE_POSTGRESQL:
+            cursor_temp = conn_temp.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor_temp = conn_temp.cursor()
+        try:
+            if USE_POSTGRESQL:
+                cursor_temp.execute("SELECT amount FROM subscription_pricing WHERE period_days = %s", (period_days,))
+            else:
+                cursor_temp.execute("SELECT amount FROM subscription_pricing WHERE period_days = ?", (period_days,))
+            price_row = cursor_temp.fetchone()
+            if price_row:
+                if USE_POSTGRESQL:
+                    amount = float(price_row['amount'])
+                else:
+                    amount = float(price_row[0])
+            else:
+                amount = 0
+        except Exception as e:
+            logger.warning(f"사용료 설정 조회 실패, 기본값 0 사용: {e}")
+            amount = 0
+        finally:
+            conn_temp.close()
+    
+    if amount is None:
+        amount = 0
     
     conn = get_db_connection()
     if USE_POSTGRESQL:
@@ -3113,6 +3162,363 @@ def send_admin_message():
             'success': False,
             'message': f'서버 오류가 발생했습니다: {str(e)}'
         }), 500
+
+@app.route('/api/toggle_user_active', methods=['POST'])
+def toggle_user_active():
+    """사용자 활성화/비활성화 토글"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    user_id = data.get('user_id', '').strip()
+    is_active = data.get('is_active', True)
+    
+    if not user_id:
+        return jsonify({'success': False, 'message': '사용자 ID가 필요합니다.'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor()
+    else:
+        cursor = conn.cursor()
+    
+    try:
+        if USE_POSTGRESQL:
+            cursor.execute("UPDATE users SET is_active = %s WHERE user_id = %s", (is_active, user_id))
+        else:
+            cursor.execute("UPDATE users SET is_active = ? WHERE user_id = ?", (1 if is_active else 0, user_id))
+        
+        conn.commit()
+        
+        if cursor.rowcount == 0:
+            return jsonify({'success': False, 'message': '사용자를 찾을 수 없습니다.'}), 404
+        
+        status = '활성화' if is_active else '비활성화'
+        return jsonify({
+            'success': True,
+            'message': f'사용자가 {status}되었습니다.',
+            'is_active': is_active
+        })
+    except Exception as e:
+        logger.error(f"사용자 상태 변경 오류: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/get_pricing_settings', methods=['POST'])
+def get_pricing_settings():
+    """사용료 설정 조회"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    try:
+        if USE_POSTGRESQL:
+            cursor.execute("SELECT period_days, amount FROM subscription_pricing ORDER BY period_days")
+            rows = cursor.fetchall()
+            pricing = {row['period_days']: float(row['amount']) for row in rows}
+        else:
+            cursor.execute("SELECT period_days, amount FROM subscription_pricing ORDER BY period_days")
+            rows = cursor.fetchall()
+            pricing = {row[0]: float(row[1]) for row in rows}
+        
+        return jsonify({
+            'success': True,
+            'pricing': pricing
+        })
+    except Exception as e:
+        logger.error(f"사용료 설정 조회 오류: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/update_pricing_settings', methods=['POST'])
+def update_pricing_settings():
+    """사용료 설정 업데이트"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    pricing = data.get('pricing', {})  # {30: 10000, 90: 25000, ...}
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor()
+    else:
+        cursor = conn.cursor()
+    
+    try:
+        now = datetime.datetime.now()
+        if USE_POSTGRESQL:
+            for period_days, amount in pricing.items():
+                cursor.execute("""
+                    INSERT INTO subscription_pricing (period_days, amount, updated_at)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (period_days) DO UPDATE
+                    SET amount = EXCLUDED.amount, updated_at = EXCLUDED.updated_at
+                """, (int(period_days), float(amount), now))
+        else:
+            for period_days, amount in pricing.items():
+                # SQLite의 경우 REPLACE 사용
+                cursor.execute("""
+                    INSERT OR REPLACE INTO subscription_pricing (period_days, amount, updated_at)
+                    VALUES (?, ?, ?)
+                """, (int(period_days), float(amount), now.isoformat()))
+        
+        conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': '사용료 설정이 저장되었습니다.'
+        })
+    except Exception as e:
+        logger.error(f"사용료 설정 업데이트 오류: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/get_payment_statistics', methods=['POST'])
+def get_payment_statistics():
+    """결제 통계 조회 (일/월/년별)"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    period_type = data.get('period_type', 'day')  # day, month, year
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    try:
+        if period_type == 'day':
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    SELECT 
+                        DATE(payment_date) as period,
+                        COUNT(*) as count,
+                        SUM(amount) as total_amount
+                    FROM user_payments
+                    GROUP BY DATE(payment_date)
+                    ORDER BY period DESC
+                    LIMIT 30
+                """)
+            else:
+                cursor.execute("""
+                    SELECT 
+                        DATE(payment_date) as period,
+                        COUNT(*) as count,
+                        SUM(amount) as total_amount
+                    FROM user_payments
+                    GROUP BY DATE(payment_date)
+                    ORDER BY period DESC
+                    LIMIT 30
+                """)
+        elif period_type == 'month':
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    SELECT 
+                        TO_CHAR(payment_date, 'YYYY-MM') as period,
+                        COUNT(*) as count,
+                        SUM(amount) as total_amount
+                    FROM user_payments
+                    GROUP BY TO_CHAR(payment_date, 'YYYY-MM')
+                    ORDER BY period DESC
+                    LIMIT 12
+                """)
+            else:
+                cursor.execute("""
+                    SELECT 
+                        strftime('%%Y-%%m', payment_date) as period,
+                        COUNT(*) as count,
+                        SUM(amount) as total_amount
+                    FROM user_payments
+                    GROUP BY strftime('%%Y-%%m', payment_date)
+                    ORDER BY period DESC
+                    LIMIT 12
+                """)
+        elif period_type == 'year':
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    SELECT 
+                        TO_CHAR(payment_date, 'YYYY') as period,
+                        COUNT(*) as count,
+                        SUM(amount) as total_amount
+                    FROM user_payments
+                    GROUP BY TO_CHAR(payment_date, 'YYYY')
+                    ORDER BY period DESC
+                """)
+            else:
+                cursor.execute("""
+                    SELECT 
+                        strftime('%%Y', payment_date) as period,
+                        COUNT(*) as count,
+                        SUM(amount) as total_amount
+                    FROM user_payments
+                    GROUP BY strftime('%%Y', payment_date)
+                    ORDER BY period DESC
+                """)
+        else:
+            return jsonify({'success': False, 'message': '유효하지 않은 기간 타입입니다.'}), 400
+        
+        rows = cursor.fetchall()
+        
+        if USE_POSTGRESQL:
+            statistics = [{'period': row['period'], 'count': row['count'], 'total_amount': float(row['total_amount'] or 0)} for row in rows]
+        else:
+            statistics = [{'period': row[0], 'count': row[1], 'total_amount': float(row[2] or 0)} for row in rows]
+        
+        return jsonify({
+            'success': True,
+            'statistics': statistics
+        })
+    except Exception as e:
+        logger.error(f"결제 통계 조회 오류: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/list_payments', methods=['POST'])
+def list_payments():
+    """결제 내역 조회"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    user_id = data.get('user_id', '').strip()  # 선택사항
+    limit = data.get('limit', 100)
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    try:
+        if user_id:
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    SELECT id, user_id, payment_date, amount, period_days, payment_method, note
+                    FROM user_payments
+                    WHERE user_id = %s
+                    ORDER BY payment_date DESC
+                    LIMIT %s
+                """, (user_id, limit))
+            else:
+                cursor.execute("""
+                    SELECT id, user_id, payment_date, amount, period_days, payment_method, note
+                    FROM user_payments
+                    WHERE user_id = ?
+                    ORDER BY payment_date DESC
+                    LIMIT ?
+                """, (user_id, limit))
+        else:
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    SELECT id, user_id, payment_date, amount, period_days, payment_method, note
+                    FROM user_payments
+                    ORDER BY payment_date DESC
+                    LIMIT %s
+                """, (limit,))
+            else:
+                cursor.execute("""
+                    SELECT id, user_id, payment_date, amount, period_days, payment_method, note
+                    FROM user_payments
+                    ORDER BY payment_date DESC
+                    LIMIT ?
+                """, (limit,))
+        
+        rows = cursor.fetchall()
+        
+        if USE_POSTGRESQL:
+            payments = [{
+                'id': row['id'],
+                'user_id': row['user_id'],
+                'payment_date': row['payment_date'].isoformat() if isinstance(row['payment_date'], datetime.datetime) else row['payment_date'],
+                'amount': float(row['amount']),
+                'period_days': row['period_days'],
+                'payment_method': row['payment_method'] or '',
+                'note': row['note'] or ''
+            } for row in rows]
+        else:
+            payments = [{
+                'id': row[0],
+                'user_id': row[1],
+                'payment_date': row[2],
+                'amount': float(row[3]),
+                'period_days': row[4],
+                'payment_method': row[5] or '',
+                'note': row[6] or ''
+            } for row in rows]
+        
+        return jsonify({
+            'success': True,
+            'payments': payments
+        })
+    except Exception as e:
+        logger.error(f"결제 내역 조회 오류: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/delete_payment', methods=['POST'])
+def delete_payment():
+    """결제 내역 삭제"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    payment_id = data.get('payment_id')
+    
+    if not payment_id:
+        return jsonify({'success': False, 'message': '결제 ID가 필요합니다.'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor()
+    else:
+        cursor = conn.cursor()
+    
+    try:
+        if USE_POSTGRESQL:
+            cursor.execute("DELETE FROM user_payments WHERE id = %s", (payment_id,))
+        else:
+            cursor.execute("DELETE FROM user_payments WHERE id = ?", (payment_id,))
+        
+        conn.commit()
+        
+        if cursor.rowcount == 0:
+            return jsonify({'success': False, 'message': '결제 내역을 찾을 수 없습니다.'}), 404
+        
+        return jsonify({
+            'success': True,
+            'message': '결제 내역이 삭제되었습니다.'
+        })
+    except Exception as e:
+        logger.error(f"결제 내역 삭제 오류: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
+    finally:
+        conn.close()
 
 if __name__ == '__main__':
     # 데이터베이스 초기화
