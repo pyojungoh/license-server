@@ -3532,11 +3532,6 @@ def get_user_logs():
         return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
     finally:
         conn.close()
-    except Exception as e:
-        logger.error(f"사용료 설정 업데이트 오류: {e}", exc_info=True)
-        return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
-    finally:
-        conn.close()
 
 @app.route('/api/get_payment_statistics', methods=['POST'])
 def get_payment_statistics():
