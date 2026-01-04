@@ -278,12 +278,13 @@
         <div id="alert-container"></div>
         
         <div class="tabs">
-            <button class="tab active" onclick="showTab('dashboard')">대시보드</button>
-            <button class="tab" onclick="showTab('create')">사용자 생성</button>
-            <button class="tab" onclick="showTab('list')">사용자 목록</button>
-            <button class="tab" onclick="showTab('extend')">구독 연장</button>
-            <button class="tab" onclick="showTab('pricing')">사용료 설정</button>
-            <button class="tab" onclick="showTab('statistics')">통계</button>
+            <button class="tab active" onclick="showTab('dashboard', this)">대시보드</button>
+            <button class="tab" onclick="showTab('create', this)">사용자 생성</button>
+            <button class="tab" onclick="showTab('list', this)">사용자 목록</button>
+            <button class="tab" onclick="showTab('extend', this)">구독 연장</button>
+            <button class="tab" onclick="showTab('pricing', this)">사용료 설정</button>
+            <button class="tab" onclick="showTab('statistics', this)">통계</button>
+            <button class="tab" onclick="showTab('logs', this)">로그</button>
         </div>
         
         <!-- 대시보드 -->
@@ -372,7 +373,11 @@
                 </div>
                 <div class="form-group">
                     <label>결제 방법</label>
-                    <input type="text" id="payment_method" placeholder="예: 카드, 계좌이체 등">
+                    <select id="payment_method" style="margin-bottom: 5px;">
+                        <option value="">선택하세요</option>
+                    </select>
+                    <input type="text" id="payment_method_custom" placeholder="직접 입력" style="display: none;">
+                    <small style="color: #666; font-size: 11px;">목록에서 선택하거나 직접 입력하세요.</small>
                 </div>
                 <div class="form-group">
                     <label>비고</label>
@@ -380,6 +385,66 @@
                 </div>
                 <button type="submit">구독 연장</button>
             </form>
+        </div>
+        
+        <!-- 사용료 설정 -->
+        <div id="pricing" class="tab-content">
+            <h2>사용료 설정</h2>
+            <p style="margin-bottom: 20px; color: #666; font-size: 12px;">각 기간별 사용료를 설정하세요. 구독 연장 시 자동으로 적용됩니다.</p>
+            <form id="pricing-form">
+                <div class="form-group">
+                    <label>1개월 (30일) 사용료 (원)</label>
+                    <input type="number" id="pricing_30" min="0" value="0">
+                </div>
+                <div class="form-group">
+                    <label>3개월 (90일) 사용료 (원)</label>
+                    <input type="number" id="pricing_90" min="0" value="0">
+                </div>
+                <div class="form-group">
+                    <label>6개월 (180일) 사용료 (원)</label>
+                    <input type="number" id="pricing_180" min="0" value="0">
+                </div>
+                <div class="form-group">
+                    <label>1년 (365일) 사용료 (원)</label>
+                    <input type="number" id="pricing_365" min="0" value="0">
+                </div>
+                <button type="submit">저장</button>
+                <button type="button" onclick="loadPricingSettings()" class="secondary" style="margin-left: 10px;">새로고침</button>
+            </form>
+            
+            <h3 style="margin-top: 30px; font-size: 16px;">결제 방법 관리</h3>
+            <div style="margin-bottom: 20px;">
+                <input type="text" id="new_payment_method" placeholder="새 결제 방법 입력" style="width: 200px; display: inline-block; margin-right: 10px;">
+                <button onclick="addPaymentMethod()" class="secondary">추가</button>
+            </div>
+            <div id="payment-methods-list"></div>
+        </div>
+        
+        <!-- 통계 -->
+        <div id="statistics" class="tab-content">
+            <h2>결제 통계</h2>
+            <div style="margin-bottom: 20px;">
+                <button onclick="loadPaymentStatistics('day')" class="secondary" style="margin-right: 10px;">일별</button>
+                <button onclick="loadPaymentStatistics('month')" class="secondary" style="margin-right: 10px;">월별</button>
+                <button onclick="loadPaymentStatistics('year')" class="secondary" style="margin-right: 10px;">년별</button>
+                <button onclick="loadPaymentList()" class="secondary">전체 결제 내역</button>
+            </div>
+            <div id="statistics-container"></div>
+            <div id="payment-list-container" style="display: none; margin-top: 20px;">
+                <h3 style="font-size: 16px; margin-bottom: 10px;">결제 내역</h3>
+                <div id="payment-list-table"></div>
+            </div>
+        </div>
+        
+        <!-- 로그 -->
+        <div id="logs" class="tab-content">
+            <h2>사용자 로그</h2>
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label>사용자 ID 입력</label>
+                <input type="text" id="log_user_id" placeholder="사용자 ID 입력" style="width: 200px; display: inline-block; margin-right: 10px;">
+                <button onclick="loadUserLogs()" class="secondary">조회</button>
+            </div>
+            <div id="user-log-container"></div>
         </div>
     </div>
     
@@ -408,7 +473,11 @@
                 </div>
                 <div class="form-group">
                     <label>결제 방법</label>
-                    <input type="text" id="modal_payment_method" placeholder="예: 카드, 계좌이체 등">
+                    <select id="modal_payment_method" style="margin-bottom: 5px;">
+                        <option value="">선택하세요</option>
+                    </select>
+                    <input type="text" id="modal_payment_method_custom" placeholder="직접 입력" style="display: none;">
+                    <small style="color: #666; font-size: 11px;">목록에서 선택하거나 직접 입력하세요.</small>
                 </div>
                 <div class="form-group">
                     <label>비고</label>
@@ -531,7 +600,7 @@
                 user_id: document.getElementById('modal_extend_user_id').value.trim(),
                 period_days: parseInt(document.getElementById('modal_extend_period').value),
                 amount: parseFloat(document.getElementById('modal_extend_amount').value),
-                payment_method: document.getElementById('modal_payment_method').value.trim(),
+                payment_method: (document.getElementById('modal_payment_method').value || document.getElementById('modal_payment_method_custom').value).trim(),
                 note: document.getElementById('modal_extend_note').value.trim()
             };
             
@@ -569,7 +638,7 @@
                 user_id: document.getElementById('extend_user_id').value.trim(),
                 period_days: parseInt(document.getElementById('extend_period').value),
                 amount: amountValue && amountValue !== '0' ? parseFloat(amountValue) : null, // null이면 서버에서 자동 적용
-                payment_method: document.getElementById('payment_method').value.trim(),
+                payment_method: (document.getElementById('payment_method').value || document.getElementById('payment_method_custom').value).trim(),
                 note: document.getElementById('extend_note').value.trim()
             };
             
@@ -673,11 +742,6 @@
             }
         }
         
-        // 페이지 로드 시 대시보드 자동 로드 및 DB 상태 확인
-        window.addEventListener('DOMContentLoaded', function() {
-            checkDatabase();
-            loadDashboard();
-        });
         
         // 사용자 목록 로드
         async function loadUserList() {
@@ -800,6 +864,7 @@
                                 <td style="vertical-align: middle;">
                                     ${statusBadge}
                                     ${isActive && !isExpired ? `<button onclick="toggleUserActive('${user.user_id}', false)" style="padding: 3px 8px; font-size: 10px; margin-left: 5px; background: #dc3545;" class="secondary">중지</button>` : ''}
+                                    ${!isActive ? `<button onclick="toggleUserActive('${user.user_id}', true)" style="padding: 3px 8px; font-size: 10px; margin-left: 5px; background: #28a745;" class="secondary">재활성화</button>` : ''}
                                 </td>
                                 <td style="max-width: 250px; font-size: 11px;">
                                     ${deviceHtml}
@@ -1116,15 +1181,29 @@
             }
         });
         
-        // 사용료 설정 탭 열릴 때 자동 로드
-        function showTab(tabName) {
+        // 탭 전환 함수
+        function showTab(tabName, element) {
             // 모든 탭과 콘텐츠 숨기기
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             
             // 선택한 탭 활성화
-            event.target.classList.add('active');
-            document.getElementById(tabName).classList.add('active');
+            if (element) {
+                element.classList.add('active');
+            } else {
+                // onclick에서 호출된 경우
+                const tabs = document.querySelectorAll('.tab');
+                tabs.forEach(tab => {
+                    if (tab.textContent.trim() === tabName || tab.onclick?.toString().includes(tabName)) {
+                        tab.classList.add('active');
+                    }
+                });
+            }
+            
+            const tabContent = document.getElementById(tabName);
+            if (tabContent) {
+                tabContent.classList.add('active');
+            }
             
             // 탭별 데이터 로드
             if (tabName === 'dashboard') {
@@ -1133,6 +1212,7 @@
                 loadUserList();
             } else if (tabName === 'pricing') {
                 loadPricingSettings();
+                loadPaymentMethods();
             } else if (tabName === 'statistics') {
                 loadPaymentStatistics('day');
             }
@@ -1145,7 +1225,7 @@
             document.getElementById('modal_payment_method').value = '';
             document.getElementById('modal_extend_note').value = '';
             
-            // 사용료 설정 자동 적용
+            // 사용료 설정 및 결제 방법 자동 적용
             try {
                 const response = await fetch(`${API_URL}/api/get_pricing_settings`, {
                     method: 'POST',
@@ -1159,6 +1239,20 @@
                     document.getElementById('modal_extend_amount').value = result.pricing[30];
                 } else {
                     document.getElementById('modal_extend_amount').value = '0';
+                }
+                
+                // 결제 방법 드롭다운 채우기
+                if (result.success && result.payment_methods) {
+                    const select = document.getElementById('modal_payment_method');
+                    while (select.options.length > 1) {
+                        select.remove(1);
+                    }
+                    result.payment_methods.forEach(method => {
+                        const option = document.createElement('option');
+                        option.value = method;
+                        option.textContent = method;
+                        select.appendChild(option);
+                    });
                 }
             } catch (error) {
                 document.getElementById('modal_extend_amount').value = '0';

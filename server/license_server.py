@@ -434,6 +434,15 @@ def init_db():
                 )
             """)
             
+            # 결제 방법 설정 테이블
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS payment_methods (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    method_name TEXT UNIQUE NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # 사용자 기기 등록 테이블 (1인 1기기 정책용)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS user_devices (
@@ -3232,9 +3241,20 @@ def get_pricing_settings():
             rows = cursor.fetchall()
             pricing = {row[0]: float(row[1]) for row in rows}
         
+        # 결제 방법 목록도 함께 반환
+        if USE_POSTGRESQL:
+            cursor.execute("SELECT method_name FROM payment_methods ORDER BY method_name")
+            method_rows = cursor.fetchall()
+            payment_methods = [row['method_name'] for row in method_rows]
+        else:
+            cursor.execute("SELECT method_name FROM payment_methods ORDER BY method_name")
+            method_rows = cursor.fetchall()
+            payment_methods = [row[0] for row in method_rows]
+        
         return jsonify({
             'success': True,
-            'pricing': pricing
+            'pricing': pricing,
+            'payment_methods': payment_methods
         })
     except Exception as e:
         logger.error(f"사용료 설정 조회 오류: {e}", exc_info=True)
@@ -3283,6 +3303,235 @@ def update_pricing_settings():
             'success': True,
             'message': '사용료 설정이 저장되었습니다.'
         })
+    except Exception as e:
+        logger.error(f"사용료 설정 업데이트 오류: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/get_payment_methods', methods=['POST'])
+def get_payment_methods():
+    """결제 방법 목록 조회"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    try:
+        if USE_POSTGRESQL:
+            cursor.execute("SELECT method_name FROM payment_methods ORDER BY method_name")
+            rows = cursor.fetchall()
+            methods = [row['method_name'] for row in rows]
+        else:
+            cursor.execute("SELECT method_name FROM payment_methods ORDER BY method_name")
+            rows = cursor.fetchall()
+            methods = [row[0] for row in rows]
+        
+        return jsonify({
+            'success': True,
+            'payment_methods': methods
+        })
+    except Exception as e:
+        logger.error(f"결제 방법 조회 오류: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/add_payment_method', methods=['POST'])
+def add_payment_method():
+    """결제 방법 추가"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    method_name = data.get('method_name', '').strip()
+    
+    if not method_name:
+        return jsonify({'success': False, 'message': '결제 방법 이름이 필요합니다.'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor()
+    else:
+        cursor = conn.cursor()
+    
+    try:
+        if USE_POSTGRESQL:
+            cursor.execute("INSERT INTO payment_methods (method_name) VALUES (%s) ON CONFLICT (method_name) DO NOTHING", (method_name,))
+        else:
+            cursor.execute("INSERT OR IGNORE INTO payment_methods (method_name) VALUES (?)", (method_name,))
+        
+        conn.commit()
+        
+        if cursor.rowcount == 0:
+            return jsonify({'success': False, 'message': '이미 존재하는 결제 방법입니다.'}), 400
+        
+        return jsonify({
+            'success': True,
+            'message': '결제 방법이 추가되었습니다.'
+        })
+    except Exception as e:
+        logger.error(f"결제 방법 추가 오류: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/delete_payment_method', methods=['POST'])
+def delete_payment_method():
+    """결제 방법 삭제"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    method_name = data.get('method_name', '').strip()
+    
+    if not method_name:
+        return jsonify({'success': False, 'message': '결제 방법 이름이 필요합니다.'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor()
+    else:
+        cursor = conn.cursor()
+    
+    try:
+        if USE_POSTGRESQL:
+            cursor.execute("DELETE FROM payment_methods WHERE method_name = %s", (method_name,))
+        else:
+            cursor.execute("DELETE FROM payment_methods WHERE method_name = ?", (method_name,))
+        
+        conn.commit()
+        
+        if cursor.rowcount == 0:
+            return jsonify({'success': False, 'message': '결제 방법을 찾을 수 없습니다.'}), 404
+        
+        return jsonify({
+            'success': True,
+            'message': '결제 방법이 삭제되었습니다.'
+        })
+    except Exception as e:
+        logger.error(f"결제 방법 삭제 오류: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/get_user_logs', methods=['POST'])
+def get_user_logs():
+    """사용자 로그 조회 (가입일, 연장 내역)"""
+    data = request.json
+    admin_key = data.get('admin_key', '')
+    
+    if admin_key != ADMIN_KEY:
+        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    
+    user_id = data.get('user_id', '').strip()
+    
+    if not user_id:
+        return jsonify({'success': False, 'message': '사용자 ID가 필요합니다.'}), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    try:
+        # 사용자 정보 가져오기
+        if USE_POSTGRESQL:
+            cursor.execute("SELECT created_date, name, email FROM users WHERE user_id = %s", (user_id,))
+            user_data = cursor.fetchone()
+            
+            # 연장 내역 가져오기
+            cursor.execute("""
+                SELECT payment_date, amount, period_days, payment_method, note
+                FROM user_payments
+                WHERE user_id = %s
+                ORDER BY payment_date DESC
+            """, (user_id,))
+            payments = cursor.fetchall()
+        else:
+            cursor.execute("SELECT created_date, name, email FROM users WHERE user_id = ?", (user_id,))
+            user_row = cursor.fetchone()
+            user_data = {'created_date': user_row[0], 'name': user_row[1], 'email': user_row[2]} if user_row else None
+            
+            cursor.execute("""
+                SELECT payment_date, amount, period_days, payment_method, note
+                FROM user_payments
+                WHERE user_id = ?
+                ORDER BY payment_date DESC
+            """, (user_id,))
+            payment_rows = cursor.fetchall()
+            payments = [{
+                'payment_date': row[0],
+                'amount': row[1],
+                'period_days': row[2],
+                'payment_method': row[3],
+                'note': row[4]
+            } for row in payment_rows]
+        
+        if not user_data:
+            return jsonify({'success': False, 'message': '사용자를 찾을 수 없습니다.'}), 404
+        
+        # 데이터 포맷팅
+        created_date = user_data['created_date'] if USE_POSTGRESQL else user_data.get('created_date')
+        if isinstance(created_date, str):
+            created_date = datetime.datetime.fromisoformat(created_date.replace('Z', '+00:00'))
+        elif created_date and not isinstance(created_date, datetime.datetime):
+            created_date = datetime.datetime.fromisoformat(str(created_date))
+        
+        payment_history = []
+        for payment in payments:
+            payment_date = payment['payment_date'] if USE_POSTGRESQL else payment.get('payment_date')
+            if isinstance(payment_date, str):
+                payment_date = datetime.datetime.fromisoformat(payment_date.replace('Z', '+00:00'))
+            elif payment_date and not isinstance(payment_date, datetime.datetime):
+                payment_date = datetime.datetime.fromisoformat(str(payment_date))
+            
+            period_text = f"{payment['period_days']}일"
+            if payment['period_days'] == 30:
+                period_text = "1개월"
+            elif payment['period_days'] == 90:
+                period_text = "3개월"
+            elif payment['period_days'] == 180:
+                period_text = "6개월"
+            elif payment['period_days'] == 365:
+                period_text = "1년"
+            
+            payment_history.append({
+                'payment_date': payment_date.isoformat() if payment_date else '',
+                'amount': float(payment['amount']),
+                'period_days': payment['period_days'],
+                'period_text': period_text,
+                'payment_method': payment['payment_method'] or '',
+                'note': payment['note'] or ''
+            })
+        
+        return jsonify({
+            'success': True,
+            'user': {
+                'user_id': user_id,
+                'name': user_data['name'] if USE_POSTGRESQL else user_data.get('name'),
+                'email': user_data['email'] if USE_POSTGRESQL else user_data.get('email'),
+                'created_date': created_date.isoformat() if created_date else ''
+            },
+            'payment_history': payment_history
+        })
+    except Exception as e:
+        logger.error(f"사용자 로그 조회 오류: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
+    finally:
+        conn.close()
     except Exception as e:
         logger.error(f"사용료 설정 업데이트 오류: {e}", exc_info=True)
         return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
