@@ -620,8 +620,9 @@ class HanjinAutomationApp:
                 return False
             
             # 서버에 사용자 정보 확인 요청
-            self.log("사용자 정보 확인 중...")
+            self.log(f"서버에 토큰 확인 요청 중... (PC 로그인 아이디: {self.current_user_id})")
             success, match, message, token_user_id = self.user_auth_manager.check_token_owner(token, self.current_user_id)
+            self.log(f"서버 응답 - 성공: {success}, 일치: {match}, 토큰 소유자: {token_user_id}")
             
             if not success:
                 self.log(f"⚠️ 사용자 정보 확인 실패: {message}")

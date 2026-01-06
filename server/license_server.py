@@ -2099,7 +2099,8 @@ def check_token_owner():
             return jsonify({
                 'success': True,
                 'match': False,
-                'message': '유효하지 않은 토큰입니다.'
+                'message': '유효하지 않은 토큰입니다.',
+                'token_user_id': None
             })
         
         # 만료 시간 확인
@@ -2123,14 +2124,16 @@ def check_token_owner():
             return jsonify({
                 'success': True,
                 'match': False,
-                'message': '토큰이 만료되었습니다.'
+                'message': f'토큰이 만료되었습니다. (토큰 소유자: {token_user_id})',
+                'token_user_id': token_user_id
             })
         
         if not user_active:
             return jsonify({
                 'success': True,
                 'match': False,
-                'message': '토큰 소유자가 비활성화되었습니다.'
+                'message': f'토큰 소유자가 비활성화되었습니다. (토큰 소유자: {token_user_id})',
+                'token_user_id': token_user_id
             })
         
         # PC 프로그램 로그인 사용자와 토큰 소유자 일치 확인
