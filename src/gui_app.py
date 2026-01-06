@@ -1292,6 +1292,50 @@ class HanjinAutomationApp:
         depositor_entry.bind("<Return>", on_enter)
         account_window.focus_set()
     
+    def check_expiry_and_notify(self):
+        """만료일 체크 및 알림"""
+        if not self.current_user_info:
+            return
+        
+        expiry_date_str = self.current_user_info.get('expiry_date', '')
+        if not expiry_date_str:
+            return
+        
+        try:
+            # 만료일 파싱 (ISO 형식 또는 YYYY-MM-DD 형식)
+            if 'T' in expiry_date_str:
+                expiry_date = datetime.datetime.fromisoformat(expiry_date_str.replace('Z', '+00:00'))
+            else:
+                expiry_date = datetime.datetime.strptime(expiry_date_str[:10], '%Y-%m-%d')
+            
+            # 시간대 제거 (날짜만 비교)
+            expiry_date = expiry_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            today = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            # 만료일까지 남은 일수 계산
+            days_remaining = (expiry_date - today).days
+            
+            if days_remaining < 0:
+                # 이미 만료됨 - 입금계좌안내 창 표시
+                messagebox.showwarning(
+                    "프로그램 기간 만료",
+                    "프로그램 사용 기간이 만료되었습니다.\n\n입금계좌안내를 확인하여 구독을 연장해주세요."
+                )
+                # 입금계좌안내 창 표시
+                self.show_payment_account_window()
+            elif days_remaining <= 5:
+                # 만료 5일 전부터 알림
+                messagebox.showinfo(
+                    "프로그램 기간 만료 안내",
+                    f"프로그램 기간만료 {days_remaining}일 전입니다.\n\n"
+                    f"(입금계좌 안내는 메뉴바에 도움말>입금계좌안내 에서 확인하세요)"
+                )
+        except Exception as e:
+            # 날짜 파싱 오류 시 무시
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"만료일 체크 오류: {e}")
+    
     def on_closing(self):
         """프로그램 종료 시 정리"""
         # 자동 로그아웃 타이머 취소
