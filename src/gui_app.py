@@ -278,7 +278,7 @@ class HanjinAutomationApp:
         # 도움말 메뉴
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="도움말", menu=help_menu)
-        help_menu.add_command(label="내 입금계좌정보", command=self.show_payment_account_window)
+        help_menu.add_command(label="입금계좌안내", command=self.show_payment_account_window)
         help_menu.add_command(label="관리자에게 메시지 보내기", command=self.show_admin_message_window)
         
         # 메인 프레임
