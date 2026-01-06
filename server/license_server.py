@@ -1714,6 +1714,9 @@ def user_login():
             access_token = generate_access_token()
             token_hash = hash_token(access_token)
             expires_at = now + datetime.timedelta(days=7)  # 7일 유효
+            
+            # 토큰 생성 로깅
+            logger.info(f"새 토큰 생성 - 사용자: {user_id}, 생성 시간: {now}, 만료 시간: {expires_at}, 토큰 해시: {token_hash[:16]}...")
         
             # 토큰 저장
             if USE_POSTGRESQL:
@@ -2127,6 +2130,9 @@ def check_token_owner():
         if expires_at < now:
             time_diff = (now - expires_at).total_seconds() / 3600  # 시간 단위
             logger.warning(f"토큰 만료됨 - 사용자: {token_user_id}, 만료 시간: {expires_at}, 현재 시간: {now}, 경과 시간: {time_diff:.2f}시간")
+        else:
+            time_remaining = (expires_at - now).total_seconds() / 3600  # 시간 단위
+            logger.info(f"토큰 유효 - 사용자: {token_user_id}, 만료 시간: {expires_at}, 현재 시간: {now}, 남은 시간: {time_remaining:.2f}시간")
         
         if expires_at < now:
             # 토큰이 만료되었지만 아이디가 일치하는 경우
