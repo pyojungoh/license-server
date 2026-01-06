@@ -271,6 +271,19 @@ def init_db():
                 )
             """)
             
+            # 계좌정보 테이블 (관리자가 설정)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS payment_account_info (
+                    id SERIAL PRIMARY KEY,
+                    bank_name VARCHAR(100),
+                    account_number VARCHAR(100),
+                    account_holder VARCHAR(100),
+                    memo TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_by VARCHAR(100)
+                )
+            """)
+            
             # 인덱스 생성
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)
