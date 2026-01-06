@@ -1344,19 +1344,34 @@ class HanjinAutomationApp:
         
         msg_window.focus_set()
     
-    def show_payment_account_window(self):
-        """입금 계좌정보 창 표시"""
+    def show_payment_account_window(self, is_expired=False):
+        """
+        입금 계좌정보 창 표시
+        
+        Args:
+            is_expired: 만료 모드인지 여부 (True일 경우 취소 버튼 제거 및 창 닫기 불가)
+        """
         if not self.current_user_id:
             messagebox.showwarning("경고", "로그인이 필요합니다.")
             return
         
         # 새 창 생성
         account_window = tk.Toplevel(self.root)
-        account_window.title("내 입금계좌정보")
+        if is_expired:
+            account_window.title("⚠️ 프로그램 기간 만료 - 입금계좌안내")
+        else:
+            account_window.title("내 입금계좌정보")
         account_window.geometry("500x500")
         account_window.resizable(False, False)
         account_window.transient(self.root)
         account_window.grab_set()
+        
+        # 만료 모드일 경우 창 닫기 비활성화
+        if is_expired:
+            def disable_close():
+                """창 닫기 시도 시 무시"""
+                pass
+            account_window.protocol("WM_DELETE_WINDOW", disable_close)
         
         # 창을 화면 중앙에 배치
         account_window.update_idletasks()
@@ -1369,8 +1384,24 @@ class HanjinAutomationApp:
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # 제목
-        title_label = ttk.Label(main_frame, text="입금 계좌정보", font=("맑은 고딕", 16, "bold"))
-        title_label.pack(pady=(0, 20))
+        if is_expired:
+            title_text = "⚠️ 프로그램 기간 만료"
+            title_label = ttk.Label(main_frame, text=title_text, font=("맑은 고딕", 16, "bold"), foreground="red")
+            title_label.pack(pady=(0, 10))
+            # 만료 안내 메시지
+            expired_msg = ttk.Label(
+                main_frame, 
+                text="프로그램 사용 기간이 만료되었습니다.\n입금계좌안내를 확인하여 구독을 연장해주세요.",
+                font=("맑은 고딕", 11),
+                foreground="red",
+                justify=tk.CENTER
+            )
+            expired_msg.pack(pady=(0, 10))
+            subtitle_label = ttk.Label(main_frame, text="입금 계좌정보", font=("맑은 고딕", 14, "bold"))
+            subtitle_label.pack(pady=(0, 20))
+        else:
+            title_label = ttk.Label(main_frame, text="입금 계좌정보", font=("맑은 고딕", 16, "bold"))
+            title_label.pack(pady=(0, 20))
         
         # 계좌정보 표시 영역
         info_frame = ttk.LabelFrame(main_frame, text="계좌정보", padding="15")
@@ -1474,8 +1505,10 @@ class HanjinAutomationApp:
         request_btn = ttk.Button(button_frame, text="입금확인요청", command=request_confirmation, width=20)
         request_btn.pack(side=tk.LEFT, padx=5)
         
-        cancel_btn = ttk.Button(button_frame, text="취소", command=account_window.destroy, width=20)
-        cancel_btn.pack(side=tk.LEFT, padx=5)
+        # 만료 모드가 아닐 때만 취소 버튼 표시
+        if not is_expired:
+            cancel_btn = ttk.Button(button_frame, text="취소", command=account_window.destroy, width=20)
+            cancel_btn.pack(side=tk.LEFT, padx=5)
         
         # Enter 키로 요청
         def on_enter(event):
@@ -1508,13 +1541,9 @@ class HanjinAutomationApp:
             days_remaining = (expiry_date - today).days
             
             if days_remaining < 0:
-                # 이미 만료됨 - 입금계좌안내 창 표시
-                messagebox.showwarning(
-                    "프로그램 기간 만료",
-                    "프로그램 사용 기간이 만료되었습니다.\n\n입금계좌안내를 확인하여 구독을 연장해주세요."
-                )
-                # 입금계좌안내 창 표시
-                self.show_payment_account_window()
+                # 이미 만료됨 - 입금계좌안내 창 표시 (취소 불가, 창 닫기 불가)
+                # 입금계좌안내 창 표시 (만료 모드)
+                self.show_payment_account_window(is_expired=True)
             elif days_remaining <= 5:
                 # 만료 5일 전부터 알림
                 messagebox.showinfo(
