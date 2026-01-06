@@ -638,9 +638,12 @@
         // 모달 외부 클릭 시 닫기
         window.onclick = function(event) {
             const extendModal = document.getElementById('extendModal');
+            const expiryEditModal = document.getElementById('expiryEditModal');
             const userLogModal = document.getElementById('userLogModal');
             if (event.target == extendModal) {
                 closeExtendModal();
+            } else if (event.target == expiryEditModal) {
+                closeExpiryEditModal();
             }
             if (event.target == userLogModal) {
                 closeUserLogModal();
@@ -797,6 +800,46 @@
                 if (result.success) {
                     showAlert(`구독 연장 완료!<br>새 만료일: ${result.expiry_date.split('T')[0]}`, 'success');
                     closeExtendModal();
+                    loadUserList(); // 목록 새로고침
+                    if (document.getElementById('dashboard').classList.contains('active')) {
+                        loadDashboard(); // 대시보드도 새로고침
+                    }
+                } else {
+                    showAlert(result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('오류가 발생했습니다: ' + error.message, 'error');
+            }
+        });
+        
+        // 만료일 수정 폼 제출
+        document.getElementById('expiry-edit-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const userId = document.getElementById('modal_expiry_user_id').value.trim();
+            const days = parseInt(document.getElementById('modal_expiry_days').value);
+            
+            if (isNaN(days)) {
+                showAlert('기간을 올바르게 입력해주세요.', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/api/adjust_user_expiry`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        admin_key: ADMIN_KEY,
+                        user_id: userId,
+                        days: days
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert(`만료일 수정 완료!<br>새 만료일: ${result.new_expiry_date ? new Date(result.new_expiry_date).toLocaleDateString('ko-KR') : '없음'}`, 'success');
+                    closeExpiryEditModal();
                     loadUserList(); // 목록 새로고침
                     if (document.getElementById('dashboard').classList.contains('active')) {
                         loadDashboard(); // 대시보드도 새로고침
