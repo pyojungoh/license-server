@@ -1385,8 +1385,11 @@ class HanjinAutomationApp:
         account_window.geometry(f"{window_width}x{window_height}+{x}+{y}")
         
         # 스크롤 가능한 캔버스 생성
-        canvas = tk.Canvas(account_window)
-        scrollbar = ttk.Scrollbar(account_window, orient="vertical", command=canvas.yview)
+        canvas_frame = ttk.Frame(account_window)
+        canvas_frame.pack(side="top", fill=tk.BOTH, expand=True)
+        
+        canvas = tk.Canvas(canvas_frame)
+        scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
         
         scrollable_frame.bind(
@@ -1397,12 +1400,8 @@ class HanjinAutomationApp:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         
-        # 캔버스와 스크롤바를 담을 프레임
-        canvas_frame = ttk.Frame(account_window)
-        canvas_frame.pack(side="top", fill="both", expand=True)
-        
-        canvas.pack(side="left", fill="both", expand=True, in_=canvas_frame)
-        scrollbar.pack(side="right", fill="y", in_=canvas_frame)
+        canvas.pack(side="left", fill=tk.BOTH, expand=True)
+        scrollbar.pack(side="right", fill=tk.Y)
         
         # 캔버스 너비에 맞게 스크롤 가능한 프레임 크기 조정
         def configure_scroll_region(event):
@@ -1464,7 +1463,7 @@ class HanjinAutomationApp:
         ttk.Label(depositor_frame, text="입금자명:", font=("맑은 고딕", 11)).grid(row=0, column=0, padx=(0, 10), sticky=tk.W)
         depositor_var = tk.StringVar()
         depositor_entry = ttk.Entry(depositor_frame, textvariable=depositor_var, font=("맑은 고딕", 11))
-        depositor_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), fill=tk.X)
+        depositor_entry.grid(row=0, column=1, sticky=(tk.W, tk.E))
         depositor_entry.focus()
         
         # 상태 메시지
