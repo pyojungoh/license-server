@@ -1149,6 +1149,146 @@ class HanjinAutomationApp:
         
         msg_window.focus_set()
     
+    def show_payment_account_window(self):
+        """입금 계좌정보 창 표시"""
+        if not self.current_user_id:
+            messagebox.showwarning("경고", "로그인이 필요합니다.")
+            return
+        
+        # 새 창 생성
+        account_window = tk.Toplevel(self.root)
+        account_window.title("내 입금계좌정보")
+        account_window.geometry("500x500")
+        account_window.resizable(False, False)
+        account_window.transient(self.root)
+        account_window.grab_set()
+        
+        # 창을 화면 중앙에 배치
+        account_window.update_idletasks()
+        x = (account_window.winfo_screenwidth() // 2) - (500 // 2)
+        y = (account_window.winfo_screenheight() // 2) - (500 // 2)
+        account_window.geometry(f"500x500+{x}+{y}")
+        
+        # 메인 프레임
+        main_frame = ttk.Frame(account_window, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 제목
+        title_label = ttk.Label(main_frame, text="입금 계좌정보", font=("맑은 고딕", 16, "bold"))
+        title_label.pack(pady=(0, 20))
+        
+        # 계좌정보 표시 영역
+        info_frame = ttk.LabelFrame(main_frame, text="계좌정보", padding="15")
+        info_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        
+        # 계좌정보 로드 중 표시
+        loading_label = ttk.Label(info_frame, text="계좌정보를 불러오는 중...", foreground="blue")
+        loading_label.pack(pady=20)
+        
+        # 계좌정보 표시용 텍스트 위젯
+        info_text = tk.Text(info_frame, height=8, width=50, wrap=tk.WORD, state=tk.DISABLED, font=("맑은 고딕", 10))
+        info_text.pack(fill=tk.BOTH, expand=True)
+        
+        # 입금자명 입력
+        depositor_frame = ttk.Frame(main_frame)
+        depositor_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        ttk.Label(depositor_frame, text="입금자명:", font=("맑은 고딕", 10)).pack(side=tk.LEFT, padx=(0, 10))
+        depositor_var = tk.StringVar()
+        depositor_entry = ttk.Entry(depositor_frame, textvariable=depositor_var, width=30, font=("맑은 고딕", 10))
+        depositor_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        depositor_entry.focus()
+        
+        # 상태 메시지
+        status_label = ttk.Label(main_frame, text="", foreground="red", wraplength=450)
+        status_label.pack(pady=(0, 10))
+        
+        # 버튼 프레임
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X)
+        
+        def load_account_info():
+            """계좌정보 로드"""
+            loading_label.config(text="계좌정보를 불러오는 중...", foreground="blue")
+            account_window.update()
+            
+            success, account_info, message = self.user_auth_manager.get_payment_account_info()
+            
+            if success and account_info:
+                # 계좌정보 표시
+                info_text.config(state=tk.NORMAL)
+                info_text.delete("1.0", tk.END)
+                
+                bank_name = account_info.get('bank_name', '')
+                account_number = account_info.get('account_number', '')
+                account_holder = account_info.get('account_holder', '')
+                memo = account_info.get('memo', '')
+                
+                info_content = ""
+                if bank_name:
+                    info_content += f"은행명: {bank_name}\n"
+                if account_number:
+                    info_content += f"계좌번호: {account_number}\n"
+                if account_holder:
+                    info_content += f"예금주: {account_holder}\n"
+                if memo:
+                    info_content += f"\n메모:\n{memo}\n"
+                
+                if not info_content:
+                    info_content = "등록된 계좌정보가 없습니다.\n관리자에게 문의하세요."
+                
+                info_text.insert("1.0", info_content)
+                info_text.config(state=tk.DISABLED)
+                
+                loading_label.config(text="", foreground="blue")
+            else:
+                info_text.config(state=tk.NORMAL)
+                info_text.delete("1.0", tk.END)
+                info_text.insert("1.0", f"계좌정보를 불러올 수 없습니다.\n{message}\n\n관리자에게 문의하세요.")
+                info_text.config(state=tk.DISABLED)
+                loading_label.config(text="", foreground="blue")
+        
+        def request_confirmation():
+            """입금 확인 요청"""
+            depositor_name = depositor_var.get().strip()
+            
+            if not depositor_name:
+                status_label.config(text="입금자명을 입력해주세요.", foreground="red")
+                depositor_entry.focus()
+                return
+            
+            status_label.config(text="입금 확인 요청 전송 중...", foreground="blue")
+            account_window.update()
+            
+            success, message = self.user_auth_manager.request_payment_confirmation(depositor_name)
+            
+            if success:
+                status_label.config(text=message, foreground="green")
+                messagebox.showinfo("성공", message)
+                # 입력 필드 초기화
+                depositor_var.set("")
+                depositor_entry.focus()
+            else:
+                status_label.config(text=message, foreground="red")
+                messagebox.showerror("오류", message)
+        
+        # 계좌정보 로드
+        load_account_info()
+        
+        # 버튼
+        request_btn = ttk.Button(button_frame, text="입금확인요청", command=request_confirmation, width=20)
+        request_btn.pack(side=tk.LEFT, padx=5)
+        
+        cancel_btn = ttk.Button(button_frame, text="취소", command=account_window.destroy, width=20)
+        cancel_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Enter 키로 요청
+        def on_enter(event):
+            request_confirmation()
+        
+        depositor_entry.bind("<Return>", on_enter)
+        account_window.focus_set()
+    
     def on_closing(self):
         """프로그램 종료 시 정리"""
         # 자동 로그아웃 타이머 취소
