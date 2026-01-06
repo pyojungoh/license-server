@@ -60,6 +60,9 @@ class HanjinAutomationApp:
         if not self.show_login():
             return
         
+        # 만료일 체크 및 알림
+        self.check_expiry_and_notify()
+        
         # GUI 생성
         self.create_widgets()
         
