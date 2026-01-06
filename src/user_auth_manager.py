@@ -478,7 +478,7 @@ class UserAuthManager:
             logger.error(f"관리자 메시지 전송 오류: {e}", exc_info=True)
             return False, f"오류가 발생했습니다: {str(e)}"
     
-    def check_token_owner(self, access_token: str, user_id: str) -> Tuple[bool, bool, str, Optional[str]]:
+    def check_token_owner(self, access_token: str, user_id: str) -> Tuple[bool, bool, str, Optional[str], bool, bool]:
         """
         토큰 소유자 확인
         
@@ -487,10 +487,10 @@ class UserAuthManager:
             user_id: PC 프로그램 로그인 사용자 ID
             
         Returns:
-            (성공 여부, 일치 여부, 메시지, 토큰 소유자 ID)
+            (성공 여부, 일치 여부, 메시지, 토큰 소유자 ID, 토큰 만료 여부, 아이디 일치 여부)
         """
         if not access_token or not user_id:
-            return False, False, "토큰과 사용자 ID가 필요합니다.", None
+            return False, False, "토큰과 사용자 ID가 필요합니다.", None, False, False
         
         try:
             payload = {
@@ -510,22 +510,25 @@ class UserAuthManager:
                     match = data.get('match', False)
                     message = data.get('message', '')
                     token_user_id = data.get('token_user_id')  # 서버에서 반환하는 토큰 소유자 ID
-                    return True, match, message, token_user_id
+                    is_expired = data.get('is_expired', False)  # 토큰 만료 여부
+                    is_user_match = data.get('is_user_match', False)  # 아이디 일치 여부
+                    # 추가 정보를 message에 포함하여 반환 (또는 별도 반환값으로 확장 가능)
+                    return True, match, message, token_user_id, is_expired, is_user_match
                 else:
-                    return False, False, data.get('message', '확인 실패'), None
+                    return False, False, data.get('message', '확인 실패'), None, False, False
             else:
                 data = response.json()
                 return False, False, data.get('message', '서버 오류가 발생했습니다.'), None
                 
         except requests.exceptions.ConnectionError:
             logger.error("서버 연결 실패")
-            return False, False, "서버에 연결할 수 없습니다.", None
+            return False, False, "서버에 연결할 수 없습니다.", None, False, False
         except requests.exceptions.Timeout:
             logger.error("서버 응답 시간 초과")
-            return False, False, "서버 응답 시간이 초과되었습니다.", None
+            return False, False, "서버 응답 시간이 초과되었습니다.", None, False, False
         except Exception as e:
             logger.error(f"토큰 소유자 확인 오류: {e}", exc_info=True)
-            return False, False, f"오류가 발생했습니다: {str(e)}", None
+            return False, False, f"오류가 발생했습니다: {str(e)}", None, False, False
     
     def get_payment_account_info(self) -> Tuple[bool, Optional[Dict], str]:
         """

@@ -2120,24 +2120,53 @@ def check_token_owner():
         
         now = datetime.datetime.now()
         
+        # PC 프로그램 로그인 사용자와 토큰 소유자 일치 확인 (먼저 확인)
+        is_user_match = (token_user_id == pc_user_id)
+        
         if expires_at < now:
-            return jsonify({
-                'success': True,
-                'match': False,
-                'message': f'토큰이 만료되었습니다. (토큰 소유자: {token_user_id})',
-                'token_user_id': token_user_id
-            })
+            # 토큰이 만료되었지만 아이디가 일치하는 경우
+            if is_user_match:
+                return jsonify({
+                    'success': True,
+                    'match': False,
+                    'message': f'토큰이 만료되었습니다. 모바일 앱에서 토큰을 재전송해주세요. (토큰 소유자: {token_user_id})',
+                    'token_user_id': token_user_id,
+                    'is_expired': True,
+                    'is_user_match': True
+                })
+            else:
+                return jsonify({
+                    'success': True,
+                    'match': False,
+                    'message': f'토큰이 만료되었습니다. (토큰 소유자: {token_user_id})',
+                    'token_user_id': token_user_id,
+                    'is_expired': True,
+                    'is_user_match': False
+                })
         
         if not user_active:
-            return jsonify({
-                'success': True,
-                'match': False,
-                'message': f'토큰 소유자가 비활성화되었습니다. (토큰 소유자: {token_user_id})',
-                'token_user_id': token_user_id
-            })
+            # 사용자가 비활성화되었지만 아이디가 일치하는 경우
+            if is_user_match:
+                return jsonify({
+                    'success': True,
+                    'match': False,
+                    'message': f'토큰 소유자가 비활성화되었습니다. (토큰 소유자: {token_user_id})',
+                    'token_user_id': token_user_id,
+                    'is_expired': False,
+                    'is_user_match': True
+                })
+            else:
+                return jsonify({
+                    'success': True,
+                    'match': False,
+                    'message': f'토큰 소유자가 비활성화되었습니다. (토큰 소유자: {token_user_id})',
+                    'token_user_id': token_user_id,
+                    'is_expired': False,
+                    'is_user_match': False
+                })
         
-        # PC 프로그램 로그인 사용자와 토큰 소유자 일치 확인
-        if token_user_id == pc_user_id:
+        # 토큰이 유효한 경우
+        if is_user_match:
             return jsonify({
                 'success': True,
                 'match': True,

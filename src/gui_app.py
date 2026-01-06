@@ -621,8 +621,8 @@ class HanjinAutomationApp:
             
             # 서버에 사용자 정보 확인 요청
             self.log(f"서버에 토큰 확인 요청 중... (PC 로그인 아이디: {self.current_user_id})")
-            success, match, message, token_user_id = self.user_auth_manager.check_token_owner(token, self.current_user_id)
-            self.log(f"서버 응답 - 성공: {success}, 일치: {match}, 토큰 소유자: {token_user_id}")
+            success, match, message, token_user_id, is_expired, is_user_match = self.user_auth_manager.check_token_owner(token, self.current_user_id)
+            self.log(f"서버 응답 - 성공: {success}, 일치: {match}, 토큰 소유자: {token_user_id}, 만료: {is_expired}, 아이디 일치: {is_user_match}")
             
             if not success:
                 self.log(f"⚠️ 사용자 정보 확인 실패: {message}")
@@ -646,20 +646,38 @@ class HanjinAutomationApp:
                     except:
                         pass
                 
-                error_msg = (
-                    f"⚠️ 사용자 정보가 일치하지 않습니다.\n\n"
-                    f"PC 프로그램 로그인 아이디: {self.current_user_id}\n"
-                    f"모바일 앱 로그인 아이디: {mobile_user_id}\n\n"
-                    f"같은 사용자로 로그인해야 작업을 진행할 수 있습니다.\n\n"
-                    f"다음 순서로 진행해주세요:\n\n"
-                    f"1. 모바일 앱 실행\n"
-                    f"2. PC 프로그램과 같은 아이디({self.current_user_id})로 로그인\n"
-                    f"3. 모바일 앱에서 블루투스 기기로 사용자 정보 전송\n"
-                    f"4. PC 프로그램에서 다시 시도\n\n"
-                    f"※ 다른 사용자의 정보가 기기에 등록되어 있으면 작업할 수 없습니다."
-                )
-                messagebox.showerror("사용자 정보 불일치", error_msg)
-                return False
+                # 토큰이 만료되었지만 아이디가 일치하는 경우
+                if is_expired and is_user_match:
+                    error_msg = (
+                        f"⚠️ 토큰이 만료되었습니다.\n\n"
+                        f"PC 프로그램 로그인 아이디: {self.current_user_id}\n"
+                        f"모바일 앱 로그인 아이디: {mobile_user_id}\n\n"
+                        f"아이디는 일치하지만 토큰이 만료되어 작업을 진행할 수 없습니다.\n\n"
+                        f"다음 순서로 진행해주세요:\n\n"
+                        f"1. 모바일 앱 실행\n"
+                        f"2. PC 프로그램과 같은 아이디({self.current_user_id})로 로그인\n"
+                        f"3. 모바일 앱에서 블루투스 기기로 사용자 정보 재전송\n"
+                        f"4. PC 프로그램에서 다시 시도\n\n"
+                        f"※ 토큰은 1시간 동안 유효하며, 만료되면 재전송이 필요합니다."
+                    )
+                    messagebox.showwarning("토큰 만료", error_msg)
+                    return False
+                else:
+                    # 아이디가 일치하지 않는 경우
+                    error_msg = (
+                        f"⚠️ 사용자 정보가 일치하지 않습니다.\n\n"
+                        f"PC 프로그램 로그인 아이디: {self.current_user_id}\n"
+                        f"모바일 앱 로그인 아이디: {mobile_user_id}\n\n"
+                        f"같은 사용자로 로그인해야 작업을 진행할 수 있습니다.\n\n"
+                        f"다음 순서로 진행해주세요:\n\n"
+                        f"1. 모바일 앱 실행\n"
+                        f"2. PC 프로그램과 같은 아이디({self.current_user_id})로 로그인\n"
+                        f"3. 모바일 앱에서 블루투스 기기로 사용자 정보 전송\n"
+                        f"4. PC 프로그램에서 다시 시도\n\n"
+                        f"※ 다른 사용자의 정보가 기기에 등록되어 있으면 작업할 수 없습니다."
+                    )
+                    messagebox.showerror("사용자 정보 불일치", error_msg)
+                    return False
             
             self.log("✓ 사용자 정보 확인 완료")
             return True
