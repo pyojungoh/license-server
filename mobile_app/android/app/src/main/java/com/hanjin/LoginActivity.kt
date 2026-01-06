@@ -83,7 +83,7 @@ class LoginActivity : AppCompatActivity() {
                 
                 val response = ApiClient.apiService.login(request)
                 
-                Log.d("LoginActivity", "서버 응답: success=${response.success}, token=${if (response.access_token != null) "있음 (${response.access_token?.take(20)}...)" else "없음"}")
+                Log.d("LoginActivity", "서버 응답: success=${response.success}, token=${if (response.access_token != null) "있음 (${response.access_token.take(20)}...)" else "없음"}")
                 Log.d("LoginActivity", "응답 메시지: ${response.message}")
                 Log.d("LoginActivity", "응답 전체: success=${response.success}, message=${response.message}, access_token=${response.access_token}, expires_at=${response.expires_at}")
                 
@@ -92,7 +92,7 @@ class LoginActivity : AppCompatActivity() {
                         // 로그인 성공
                         Log.d("LoginActivity", "로그인 성공 - 토큰 저장 및 MainActivity 이동 시작")
                         val expiryDate = response.user_info?.expiry_date
-                        saveLoginInfo(response.access_token!!, userId, response.expires_at, expiryDate)
+                        saveLoginInfo(response.access_token, userId, response.expires_at, expiryDate)
                         Toast.makeText(this@LoginActivity, "로그인 성공! MainActivity로 이동", Toast.LENGTH_SHORT).show()
                         
                         // 메인 화면으로 이동
