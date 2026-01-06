@@ -1526,8 +1526,17 @@ class HanjinAutomationApp:
         request_btn = ttk.Button(button_frame, text="입금확인요청", command=request_confirmation, width=20)
         request_btn.pack(side=tk.LEFT, padx=5)
         
-        # 만료 모드가 아닐 때만 취소 버튼 표시
-        if not is_expired:
+        # 만료 모드일 때는 종료 버튼, 아닐 때는 취소 버튼
+        if is_expired:
+            def exit_program():
+                """프로그램 종료"""
+                if messagebox.askyesno("종료 확인", "프로그램을 종료하시겠습니까?"):
+                    self.root.quit()
+                    self.root.destroy()
+            
+            exit_btn = ttk.Button(button_frame, text="종료", command=exit_program, width=20)
+            exit_btn.pack(side=tk.LEFT, padx=5)
+        else:
             cancel_btn = ttk.Button(button_frame, text="취소", command=account_window.destroy, width=20)
             cancel_btn.pack(side=tk.LEFT, padx=5)
         
