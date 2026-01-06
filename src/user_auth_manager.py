@@ -614,4 +614,60 @@ class UserAuthManager:
         except Exception as e:
             logger.error(f"입금 확인 요청 오류: {e}", exc_info=True)
             return False, f"오류가 발생했습니다: {str(e)}"
+    
+    def check_version(self, client_version: str) -> Tuple[bool, bool, str, Optional[Dict]]:
+        """
+        프로그램 버전 체크
+        
+        Args:
+            client_version: 클라이언트 프로그램 버전 (예: "1.0.0")
+        
+        Returns:
+            (success, needs_update, message, version_info)
+            - success: 버전 체크 성공 여부
+            - needs_update: 업데이트 필요 여부
+            - message: 오류 메시지 또는 안내 메시지
+            - version_info: 버전 정보 딕셔너리 (성공 시)
+        """
+        try:
+            response = requests.post(
+                f"{self.server_url}/api/check_version",
+                json={"version": client_version},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    version_info = {
+                        'current_version': data.get('current_version', ''),
+                        'min_required_version': data.get('min_required_version', ''),
+                        'force_update_enabled': data.get('force_update_enabled', False),
+                        'download_url': data.get('download_url', ''),
+                        'update_message': data.get('update_message', ''),
+                        'needs_update': data.get('needs_update', False),
+                        'client_version': data.get('client_version', client_version)
+                    }
+                    needs_update = version_info['needs_update'] and version_info['force_update_enabled']
+                    return True, needs_update, '', version_info
+                else:
+                    error_msg = data.get('message', '버전 체크 실패')
+                    logger.warning(f"버전 체크 실패: {error_msg}")
+                    return False, False, error_msg, None
+            else:
+                data = response.json() if response.content else {}
+                return False, False, data.get('message', '서버 오류가 발생했습니다.'), None
+                
+        except requests.exceptions.ConnectionError:
+            logger.error("서버 연결 실패 (버전 체크)")
+            # 네트워크 오류 시 차단하지 않음 (기존 프로그램 사용 가능)
+            return False, False, "서버에 연결할 수 없습니다. 버전 체크를 건너뜁니다.", None
+        except requests.exceptions.Timeout:
+            logger.error("서버 응답 시간 초과 (버전 체크)")
+            # 타임아웃 시 차단하지 않음
+            return False, False, "서버 응답 시간이 초과되었습니다. 버전 체크를 건너뜁니다.", None
+        except Exception as e:
+            logger.error(f"버전 체크 오류: {e}", exc_info=True)
+            # 예외 발생 시 차단하지 않음
+            return False, False, f"버전 체크 중 오류가 발생했습니다: {str(e)}", None
 

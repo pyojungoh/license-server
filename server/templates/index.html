@@ -275,6 +275,7 @@
             <button class="tab" onclick="showTab('list', this)">사용자 목록</button>
             <button class="tab" onclick="showTab('pricing', this)">사용료 설정</button>
             <button class="tab" onclick="showTab('account', this)">계좌정보 설정</button>
+            <button class="tab" onclick="showTab('version', this)">버전 관리</button>
             <button class="tab" onclick="showTab('statistics', this)">통계</button>
         </div>
         
@@ -397,6 +398,57 @@
                 </div>
                 <button type="submit">저장</button>
                 <button type="button" onclick="loadAccountInfo()" class="secondary" style="margin-left: 10px;">새로고침</button>
+            </form>
+        </div>
+        
+        <!-- 버전 관리 -->
+        <div id="version" class="tab-content">
+            <h2>프로그램 버전 관리</h2>
+            <p style="margin-bottom: 20px; color: #666; font-size: 12px;">
+                PC 프로그램의 최소 지원 버전을 설정하여 구버전 사용을 차단할 수 있습니다.<br>
+                <strong style="color: #d32f2f;">⚠️ 개발 중에는 "강제 업데이트 활성화"를 OFF로 설정하여 기존 프로그램에 영향을 주지 않도록 하세요.</strong>
+            </p>
+            <form id="version-form">
+                <div class="form-group">
+                    <label>현재 버전</label>
+                    <input type="text" id="version_current" placeholder="예: 1.2.0" maxlength="20" required>
+                    <small style="color: #666; font-size: 11px;">최신 배포된 프로그램 버전</small>
+                </div>
+                <div class="form-group">
+                    <label>최소 지원 버전</label>
+                    <input type="text" id="version_min_required" placeholder="예: 1.1.0" maxlength="20" required>
+                    <small style="color: #666; font-size: 11px;">이 버전 미만은 사용 불가 (강제 업데이트 활성화 시)</small>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="version_force_update" style="width: auto; margin-right: 8px;">
+                        강제 업데이트 활성화
+                    </label>
+                    <small style="color: #d32f2f; font-size: 11px; display: block; margin-top: 4px;">
+                        ⚠️ 체크 시: 구버전 사용자 로그인 차단<br>
+                        ⚠️ 체크 해제 시: 구버전도 사용 가능 (개발/테스트용)
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label>다운로드 URL</label>
+                    <input type="url" id="version_download_url" placeholder="https://example.com/download" maxlength="500">
+                    <small style="color: #666; font-size: 11px;">업데이트 다운로드 링크</small>
+                </div>
+                <div class="form-group">
+                    <label>업데이트 안내 메시지</label>
+                    <textarea id="version_update_message" rows="3" placeholder="사용자에게 표시할 업데이트 안내 메시지 (선택사항)"></textarea>
+                </div>
+                <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
+                    <strong style="color: #856404;">💡 사용 가이드:</strong>
+                    <ul style="margin: 8px 0 0 20px; color: #856404; font-size: 12px;">
+                        <li>개발 중: "강제 업데이트 활성화" OFF → 기존 프로그램 정상 작동</li>
+                        <li>배포 전: 최소 지원 버전 설정 (예: 1.1.0)</li>
+                        <li>배포 시: "강제 업데이트 활성화" ON → 구버전 자동 차단</li>
+                        <li>버전 형식: X.Y.Z (예: 1.2.0, 2.0.1)</li>
+                    </ul>
+                </div>
+                <button type="submit">저장</button>
+                <button type="button" onclick="loadVersionInfo()" class="secondary" style="margin-left: 10px;">새로고침</button>
             </form>
         </div>
         
@@ -1280,6 +1332,96 @@
         // 계좌정보 탭 열릴 때 자동 로드
         document.querySelector('button[onclick*="account"]')?.addEventListener('click', function() {
             setTimeout(loadAccountInfo, 100);
+        });
+        
+        // 버전 정보 로드
+        async function loadVersionInfo() {
+            try {
+                const response = await fetch(`${API_URL}/api/get_version_info`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        admin_key: ADMIN_KEY
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success && result.version_info) {
+                    const info = result.version_info;
+                    document.getElementById('version_current').value = info.current_version || '1.0.0';
+                    document.getElementById('version_min_required').value = info.min_required_version || '1.0.0';
+                    document.getElementById('version_force_update').checked = info.force_update_enabled || false;
+                    document.getElementById('version_download_url').value = info.download_url || '';
+                    document.getElementById('version_update_message').value = info.update_message || '';
+                } else {
+                    // 버전 정보가 없으면 기본값으로 초기화
+                    document.getElementById('version_current').value = '1.0.0';
+                    document.getElementById('version_min_required').value = '1.0.0';
+                    document.getElementById('version_force_update').checked = false;
+                    document.getElementById('version_download_url').value = '';
+                    document.getElementById('version_update_message').value = '';
+                }
+            } catch (error) {
+                showAlert('버전 정보 로드 중 오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+        
+        // 버전 정보 저장
+        document.getElementById('version-form')?.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const versionInfo = {
+                current_version: document.getElementById('version_current').value.trim(),
+                min_required_version: document.getElementById('version_min_required').value.trim(),
+                force_update_enabled: document.getElementById('version_force_update').checked,
+                download_url: document.getElementById('version_download_url').value.trim(),
+                update_message: document.getElementById('version_update_message').value.trim()
+            };
+            
+            // 버전 형식 검증 (X.Y.Z 형식)
+            const versionPattern = /^\d+\.\d+\.\d+$/;
+            if (!versionPattern.test(versionInfo.current_version)) {
+                showAlert('현재 버전은 X.Y.Z 형식이어야 합니다 (예: 1.2.0)', 'error');
+                return;
+            }
+            if (!versionPattern.test(versionInfo.min_required_version)) {
+                showAlert('최소 지원 버전은 X.Y.Z 형식이어야 합니다 (예: 1.1.0)', 'error');
+                return;
+            }
+            
+            // 강제 업데이트 활성화 시 확인
+            if (versionInfo.force_update_enabled) {
+                if (!confirm('강제 업데이트를 활성화하면 구버전 사용자가 로그인할 수 없습니다.\n\n계속하시겠습니까?')) {
+                    return;
+                }
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/api/update_version_info`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        admin_key: ADMIN_KEY,
+                        ...versionInfo
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert(result.message, 'success');
+                } else {
+                    showAlert(result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('오류가 발생했습니다: ' + error.message, 'error');
+            }
+        });
+        
+        // 버전 관리 탭 열릴 때 자동 로드
+        document.querySelector('button[onclick*="version"]')?.addEventListener('click', function() {
+            setTimeout(loadVersionInfo, 100);
         });
         
         // 결제 통계 로드

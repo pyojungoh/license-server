@@ -53,6 +53,10 @@ class HanjinAutomationApp:
         self.current_user_id = None
         self.current_user_info = None
         
+        # 버전 체크 (로그인 전에 수행)
+        if not self.check_version():
+            return  # 버전 체크 실패 시 프로그램 종료
+        
         # 세션 파일 삭제 (프로그램 재시작 시 항상 로그인 강제)
         # clear_session()은 show_login에서 자동으로 처리됨 (세션 확인 코드 제거)
         
@@ -109,6 +113,162 @@ class HanjinAutomationApp:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)
         except Exception as e:
             messagebox.showerror("오류", f"설정 저장 실패: {e}")
+    
+    def check_version(self) -> bool:
+        """
+        프로그램 버전 체크 (로그인 전에 수행)
+        
+        Returns:
+            True: 버전 체크 통과 또는 오류 시 계속 진행
+            False: 강제 업데이트 필요로 프로그램 종료
+        """
+        try:
+            # version.txt 파일에서 현재 버전 읽기
+            version_file = Path(__file__).parent.parent / "version.txt"
+            if not version_file.exists():
+                # version.txt가 없으면 기본값 사용
+                current_version = "1.0.0"
+            else:
+                with open(version_file, 'r', encoding='utf-8') as f:
+                    current_version = f.read().strip()
+                    if not current_version:
+                        current_version = "1.0.0"
+            
+            # 서버에 버전 체크 요청
+            success, needs_update, message, version_info = self.user_auth_manager.check_version(current_version)
+            
+            if not success:
+                # 버전 체크 실패 (네트워크 오류 등) - 경고만 표시하고 계속 진행
+                messagebox.showwarning(
+                    "버전 체크 실패",
+                    f"버전 체크에 실패했습니다:\n{message}\n\n프로그램을 계속 사용할 수 있지만, 최신 버전을 사용하는 것을 권장합니다."
+                )
+                return True  # 오류 시에도 계속 진행
+            
+            # 업데이트가 필요하고 강제 업데이트가 활성화된 경우
+            if needs_update and version_info and version_info.get('force_update_enabled'):
+                download_url = version_info.get('download_url', '')
+                update_message = version_info.get('update_message', '')
+                min_version = version_info.get('min_required_version', '')
+                
+                # 업데이트 안내 메시지 구성
+                error_msg = (
+                    f"⚠️ 프로그램 업데이트가 필요합니다.\n\n"
+                    f"현재 버전: {current_version}\n"
+                    f"필요 버전: {min_version} 이상\n\n"
+                )
+                
+                if update_message:
+                    error_msg += f"{update_message}\n\n"
+                
+                error_msg += (
+                    "이 버전은 더 이상 사용할 수 없습니다.\n"
+                    "최신 버전으로 업데이트해주세요."
+                )
+                
+                # 업데이트 안내 창 표시
+                update_window = tk.Toplevel(self.root)
+                update_window.title("프로그램 업데이트 필요")
+                update_window.geometry("500x300")
+                update_window.resizable(False, False)
+                update_window.transient(self.root)
+                update_window.grab_set()
+                
+                # 창을 화면 중앙에 배치
+                update_window.update_idletasks()
+                x = (update_window.winfo_screenwidth() // 2) - (update_window.winfo_width() // 2)
+                y = (update_window.winfo_screenheight() // 2) - (update_window.winfo_height() // 2)
+                update_window.geometry(f"+{x}+{y}")
+                
+                # 메시지 표시
+                msg_label = tk.Label(
+                    update_window,
+                    text=error_msg,
+                    justify=tk.LEFT,
+                    font=("맑은 고딕", 10),
+                    padx=20,
+                    pady=20
+                )
+                msg_label.pack(fill=tk.BOTH, expand=True)
+                
+                # 버튼 프레임
+                button_frame = tk.Frame(update_window)
+                button_frame.pack(pady=10)
+                
+                def open_download():
+                    """다운로드 링크 열기"""
+                    if download_url:
+                        import webbrowser
+                        webbrowser.open(download_url)
+                    else:
+                        messagebox.showinfo("안내", "다운로드 링크가 설정되지 않았습니다.\n관리자에게 문의하세요.")
+                
+                def close_app():
+                    """프로그램 종료"""
+                    self.root.quit()
+                    self.root.destroy()
+                
+                # 다운로드 버튼
+                if download_url:
+                    download_btn = tk.Button(
+                        button_frame,
+                        text="업데이트 다운로드",
+                        command=open_download,
+                        bg="#4CAF50",
+                        fg="white",
+                        font=("맑은 고딕", 10, "bold"),
+                        padx=20,
+                        pady=5
+                    )
+                    download_btn.pack(side=tk.LEFT, padx=5)
+                
+                # 종료 버튼
+                close_btn = tk.Button(
+                    button_frame,
+                    text="종료",
+                    command=close_app,
+                    bg="#f44336",
+                    fg="white",
+                    font=("맑은 고딕", 10, "bold"),
+                    padx=20,
+                    pady=5
+                )
+                close_btn.pack(side=tk.LEFT, padx=5)
+                
+                # 창 닫기 시 프로그램 종료
+                update_window.protocol("WM_DELETE_WINDOW", close_app)
+                
+                # 메인 루프 대기 (창이 닫힐 때까지)
+                update_window.wait_window()
+                
+                # 창이 닫히면 프로그램 종료
+                return False
+            
+            # 업데이트가 필요하지만 강제 업데이트가 비활성화된 경우 (개발 모드)
+            elif version_info and version_info.get('needs_update') and not version_info.get('force_update_enabled'):
+                # 경고만 표시하고 계속 진행
+                min_version = version_info.get('min_required_version', '')
+                messagebox.showinfo(
+                    "업데이트 안내",
+                    f"새 버전이 있습니다.\n\n"
+                    f"현재 버전: {current_version}\n"
+                    f"최신 버전: {min_version}\n\n"
+                    f"업데이트를 권장합니다."
+                )
+                return True
+            
+            # 버전 체크 통과
+            return True
+            
+        except Exception as e:
+            # 예외 발생 시 경고만 표시하고 계속 진행
+            import logging
+            logging.error(f"버전 체크 중 오류: {e}", exc_info=True)
+            messagebox.showwarning(
+                "버전 체크 오류",
+                f"버전 체크 중 오류가 발생했습니다:\n{str(e)}\n\n프로그램을 계속 사용할 수 있습니다."
+            )
+            return True  # 오류 시에도 계속 진행
     
     def show_login(self):
         """로그인 화면 표시 (항상 로그인 창 표시)"""

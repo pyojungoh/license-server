@@ -284,6 +284,20 @@ def init_db():
                 )
             """)
             
+            # 버전 정보 테이블 (강제 업데이트 관리용)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS version_info (
+                    id SERIAL PRIMARY KEY,
+                    current_version VARCHAR(20) NOT NULL,
+                    min_required_version VARCHAR(20) NOT NULL,
+                    force_update_enabled BOOLEAN DEFAULT FALSE,
+                    download_url TEXT,
+                    update_message TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_by VARCHAR(100)
+                )
+            """)
+            
             # 인덱스 생성
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)
@@ -464,6 +478,20 @@ def init_db():
                     account_number TEXT,
                     account_holder TEXT,
                     memo TEXT,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_by TEXT
+                )
+            """)
+            
+            # 버전 정보 테이블 (강제 업데이트 관리용)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS version_info (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    current_version TEXT NOT NULL,
+                    min_required_version TEXT NOT NULL,
+                    force_update_enabled INTEGER DEFAULT 0,
+                    download_url TEXT,
+                    update_message TEXT,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     updated_by TEXT
                 )
@@ -4313,6 +4341,287 @@ def update_payment_account_info():
             conn.close()
     except Exception as e:
         logger.error(f"계좌정보 업데이트 오류: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': f'오류가 발생했습니다: {str(e)}'
+        }), 500
+
+@app.route('/api/check_version', methods=['POST'])
+def check_version():
+    """프로그램 버전 체크 (PC 프로그램에서 호출)"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({
+                'success': False,
+                'message': '요청 데이터가 없습니다.'
+            }), 400
+        
+        client_version = data.get('version', '')
+        if not client_version:
+            return jsonify({
+                'success': False,
+                'message': '버전 정보가 없습니다.'
+            }), 400
+        
+        conn = get_db_connection()
+        try:
+            if USE_POSTGRESQL:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+            else:
+                cursor = conn.cursor()
+                conn.row_factory = sqlite3.Row
+            
+            # 버전 정보 조회
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    SELECT current_version, min_required_version, force_update_enabled, 
+                           download_url, update_message
+                    FROM version_info
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """)
+                result = cursor.fetchone()
+            else:
+                cursor.execute("""
+                    SELECT current_version, min_required_version, force_update_enabled, 
+                           download_url, update_message
+                    FROM version_info
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """)
+                row = cursor.fetchone()
+                if row:
+                    result = {
+                        'current_version': row[0],
+                        'min_required_version': row[1],
+                        'force_update_enabled': bool(row[2]),
+                        'download_url': row[3],
+                        'update_message': row[4]
+                    }
+                else:
+                    result = None
+            
+            if not result:
+                # 버전 정보가 없으면 기본값 반환 (강제 업데이트 비활성화)
+                return jsonify({
+                    'success': True,
+                    'current_version': '1.0.0',
+                    'min_required_version': '1.0.0',
+                    'force_update_enabled': False,
+                    'download_url': '',
+                    'update_message': '',
+                    'needs_update': False
+                })
+            
+            # 버전 비교 함수
+            def compare_versions(v1, v2):
+                """버전 문자열 비교 (1.2.0 > 1.1.5)"""
+                def version_tuple(v):
+                    parts = v.split('.')
+                    return tuple(int(x) for x in parts)
+                return version_tuple(v1) >= version_tuple(v2)
+            
+            min_required = result.get('min_required_version') if USE_POSTGRESQL else result['min_required_version']
+            force_enabled = result.get('force_update_enabled') if USE_POSTGRESQL else result['force_update_enabled']
+            
+            # 클라이언트 버전이 최소 요구 버전보다 낮은지 확인
+            needs_update = not compare_versions(client_version, min_required)
+            
+            response_data = {
+                'success': True,
+                'current_version': result.get('current_version') if USE_POSTGRESQL else result['current_version'],
+                'min_required_version': min_required,
+                'force_update_enabled': force_enabled,
+                'download_url': result.get('download_url') if USE_POSTGRESQL else result['download_url'] or '',
+                'update_message': result.get('update_message') if USE_POSTGRESQL else result['update_message'] or '',
+                'needs_update': needs_update,
+                'client_version': client_version
+            }
+            
+            return jsonify(response_data)
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"버전 체크 오류: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': f'버전 체크 중 오류가 발생했습니다: {str(e)}'
+        }), 500
+
+@app.route('/api/get_version_info', methods=['POST'])
+def get_version_info():
+    """버전 정보 조회 (어드민 페이지용)"""
+    try:
+        data = request.json
+        if not data or data.get('admin_key') != ADMIN_KEY:
+            return jsonify({
+                'success': False,
+                'message': '인증 실패'
+            }), 401
+        
+        conn = get_db_connection()
+        try:
+            if USE_POSTGRESQL:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+            else:
+                cursor = conn.cursor()
+                conn.row_factory = sqlite3.Row
+            
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    SELECT current_version, min_required_version, force_update_enabled, 
+                           download_url, update_message, updated_at
+                    FROM version_info
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """)
+                result = cursor.fetchone()
+                if result:
+                    version_info = {
+                        'current_version': result.get('current_version', '1.0.0'),
+                        'min_required_version': result.get('min_required_version', '1.0.0'),
+                        'force_update_enabled': result.get('force_update_enabled', False),
+                        'download_url': result.get('download_url', ''),
+                        'update_message': result.get('update_message', ''),
+                        'updated_at': result.get('updated_at', '').isoformat() if result.get('updated_at') else ''
+                    }
+                else:
+                    version_info = {
+                        'current_version': '1.0.0',
+                        'min_required_version': '1.0.0',
+                        'force_update_enabled': False,
+                        'download_url': '',
+                        'update_message': '',
+                        'updated_at': ''
+                    }
+            else:
+                cursor.execute("""
+                    SELECT current_version, min_required_version, force_update_enabled, 
+                           download_url, update_message, updated_at
+                    FROM version_info
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """)
+                row = cursor.fetchone()
+                if row:
+                    version_info = {
+                        'current_version': row[0] or '1.0.0',
+                        'min_required_version': row[1] or '1.0.0',
+                        'force_update_enabled': bool(row[2]),
+                        'download_url': row[3] or '',
+                        'update_message': row[4] or '',
+                        'updated_at': row[5] or ''
+                    }
+                else:
+                    version_info = {
+                        'current_version': '1.0.0',
+                        'min_required_version': '1.0.0',
+                        'force_update_enabled': False,
+                        'download_url': '',
+                        'update_message': '',
+                        'updated_at': ''
+                    }
+            
+            return jsonify({
+                'success': True,
+                'version_info': version_info
+            })
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"버전 정보 조회 오류: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': f'오류가 발생했습니다: {str(e)}'
+        }), 500
+
+@app.route('/api/update_version_info', methods=['POST'])
+def update_version_info():
+    """버전 정보 업데이트 (어드민 페이지용)"""
+    try:
+        data = request.json
+        if not data or data.get('admin_key') != ADMIN_KEY:
+            return jsonify({
+                'success': False,
+                'message': '인증 실패'
+            }), 401
+        
+        current_version = data.get('current_version', '1.0.0')
+        min_required_version = data.get('min_required_version', '1.0.0')
+        force_update_enabled = data.get('force_update_enabled', False)
+        download_url = data.get('download_url', '')
+        update_message = data.get('update_message', '')
+        
+        conn = get_db_connection()
+        try:
+            if USE_POSTGRESQL:
+                cursor = conn.cursor()
+            else:
+                cursor = conn.cursor()
+            
+            # 기존 데이터 확인
+            if USE_POSTGRESQL:
+                cursor.execute("SELECT COUNT(*) FROM version_info")
+            else:
+                cursor.execute("SELECT COUNT(*) FROM version_info")
+            
+            count = cursor.fetchone()[0]
+            
+            if count > 0:
+                # 업데이트
+                if USE_POSTGRESQL:
+                    cursor.execute("""
+                        UPDATE version_info 
+                        SET current_version = %s, min_required_version = %s, 
+                            force_update_enabled = %s, download_url = %s, 
+                            update_message = %s, updated_at = CURRENT_TIMESTAMP, updated_by = %s
+                        WHERE id = (SELECT id FROM version_info ORDER BY updated_at DESC LIMIT 1)
+                    """, (current_version, min_required_version, force_update_enabled, 
+                          download_url, update_message, 'admin'))
+                else:
+                    cursor.execute("""
+                        UPDATE version_info 
+                        SET current_version = ?, min_required_version = ?, 
+                            force_update_enabled = ?, download_url = ?, 
+                            update_message = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
+                        WHERE id = (SELECT id FROM version_info ORDER BY updated_at DESC LIMIT 1)
+                    """, (current_version, min_required_version, force_update_enabled, 
+                          download_url, update_message, 'admin'))
+            else:
+                # 새로 추가
+                if USE_POSTGRESQL:
+                    cursor.execute("""
+                        INSERT INTO version_info (current_version, min_required_version, 
+                                                 force_update_enabled, download_url, update_message, updated_by)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (current_version, min_required_version, force_update_enabled, 
+                          download_url, update_message, 'admin'))
+                else:
+                    cursor.execute("""
+                        INSERT INTO version_info (current_version, min_required_version, 
+                                                 force_update_enabled, download_url, update_message, updated_by)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (current_version, min_required_version, force_update_enabled, 
+                          download_url, update_message, 'admin'))
+            
+            conn.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': '버전 정보가 저장되었습니다.'
+            })
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"버전 정보 업데이트 오류: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': f'버전 정보 저장 중 오류가 발생했습니다: {str(e)}'
+            }), 500
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"버전 정보 업데이트 오류: {e}", exc_info=True)
         return jsonify({
             'success': False,
             'message': f'오류가 발생했습니다: {str(e)}'
