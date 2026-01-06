@@ -28,6 +28,9 @@ bool wasConnected = false;
 // 인증 상태 (모바일 앱으로부터 토큰을 받아야만 true가 됨)
 bool isActivated = false;
 
+// 토큰 저장 변수
+String storedToken = "";
+
 // 토큰 및 Heartbeat 시간 추적
 unsigned long tokenReceivedTime = 0;
 unsigned long lastHeartbeatTime = 0;
@@ -52,12 +55,14 @@ class TokenReceiveCallbacks: public BLECharacteristicCallbacks {
             // TODO: 서버에 토큰 검증 요청 (현재는 단순히 토큰이 있으면 인증 성공)
             // 나중에 WiFi를 통해 서버 API 호출하여 검증
             if (rxValue.length() > 10) {  // 최소 토큰 길이 체크
+                storedToken = rxValue;  // 토큰 저장
                 isActivated = true;
                 tokenReceivedTime = millis();  // 토큰 수신 시간 저장
                 lastHeartbeatTime = millis();  // 초기 Heartbeat 시간 설정
                 Serial.println("✓ 인증 성공! 키보드 기능 활성화됨 (1시간 유효, 앱이 켜져 있어야 함)");
                 digitalWrite(LED_PIN, HIGH);  // LED 켜기 (인증 성공 표시)
             } else {
+                storedToken = "";  // 토큰 초기화
                 isActivated = false;
                 tokenReceivedTime = 0;
                 Serial.println("✗ 인증 실패: 유효하지 않은 토큰");
@@ -150,6 +155,7 @@ void loop() {
       Serial.println("\n✗ 블루투스 연결 끊김");
       digitalWrite(LED_PIN, LOW);
       isActivated = false;  // 연결이 끊기면 인증 상태 초기화
+      storedToken = "";  // 토큰 초기화
     }
   }
   
@@ -161,6 +167,7 @@ void loop() {
   // 토큰 만료 또는 앱이 꺼진 경우 비활성화
   if (isActivated && (!isTokenValid || !isAppAlive)) {
     isActivated = false;
+    storedToken = "";  // 토큰 초기화
     tokenReceivedTime = 0;
     lastHeartbeatTime = 0;
     digitalWrite(LED_PIN, LOW);
@@ -171,16 +178,27 @@ void loop() {
     }
   }
   
-  // 인증되어 있고 연결되어 있을 때만 키보드 기능 동작
-  if (isActivated && isConnected && isTokenValid && isAppAlive) {
-    // 시리얼로부터 데이터 수신
-    if (Serial.available() > 0) {
-      // 한 줄 읽기 (개행 문자까지)
-      String text = Serial.readStringUntil('\n');
-      text.trim();  // 앞뒤 공백 제거
+  // 시리얼로부터 데이터 수신 (인증 여부와 관계없이 GET_TOKEN 명령은 처리)
+  if (Serial.available() > 0) {
+    // 한 줄 읽기 (개행 문자까지)
+    String text = Serial.readStringUntil('\n');
+    text.trim();  // 앞뒤 공백 제거
+    
+    // 빈 문자열이 아니면 처리
+    if (text.length() > 0) {
+      // GET_TOKEN 명령 처리
+      if (text == "GET_TOKEN") {
+        if (storedToken.length() > 0) {
+          Serial.print("TOKEN:");
+          Serial.println(storedToken);
+        } else {
+          Serial.println("TOKEN:NOT_SET");
+        }
+        return;  // 명령 처리 완료, loop() 계속 진행
+      }
       
-      // 빈 문자열이 아니면 처리
-      if (text.length() > 0) {
+      // 인증되어 있고 연결되어 있을 때만 키보드 기능 동작
+      if (isActivated && isConnected && isTokenValid && isAppAlive) {
         Serial.print("→ 수신: ");
         Serial.println(text);
         
@@ -208,9 +226,15 @@ void loop() {
         delay(100);                         // 처리 대기
         
         Serial.println("  ✓ 전송 완료 (송장번호 + Tab 2회 + Enter + Shift+Tab 2회)");
+      } else {
+        // 인증되지 않았거나 연결되지 않았을 때는 키보드 입력 무시
+        Serial.println("⚠ 키보드 입력 무시됨 (인증되지 않음 또는 연결되지 않음)");
       }
     }
-  } else {
+  }
+  
+  // 인증 상태 확인 및 메시지 출력
+  if (!isActivated || !isConnected || !isTokenValid || !isAppAlive) {
     // 인증되지 않았거나 연결되지 않았을 때
     if (!isConnected) {
       // 연결 대기 중

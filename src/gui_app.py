@@ -605,19 +605,22 @@ class HanjinAutomationApp:
             controller.disconnect()
             
             if not token:
-                self.log("⚠️ 블루투스 기기에 사용자 정보가 등록되지 않았습니다. 모바일 앱에서 전송해주세요.")
+                self.log("⚠️ 블루투스 기기에 사용자 정보가 등록되지 않았습니다.")
                 warning_msg = (
                     "블루투스 기기에 사용자 정보가 등록되지 않았습니다.\n\n"
-                    "작업을 시작하려면 모바일 앱에서 기기로 사용자 정보를 전송해야 합니다.\n\n"
+                    "보안을 위해 모바일 앱에서 기기로 사용자 정보를 전송하는 것이 권장됩니다.\n\n"
                     "다음 순서로 진행해주세요:\n\n"
                     "1. 모바일 앱 실행\n"
                     "2. PC 프로그램과 같은 아이디로 로그인\n"
                     "3. 모바일 앱에서 블루투스 기기로 사용자 정보 전송\n"
                     "4. PC 프로그램에서 다시 시도\n\n"
-                    "※ 사용자 정보가 없으면 작업을 시작할 수 없습니다."
+                    "지금은 사용자 정보 확인 없이 작업을 계속 진행하시겠습니까?"
                 )
-                messagebox.showwarning("사용자 정보 없음", warning_msg)
-                return False
+                if not messagebox.askyesno("사용자 정보 없음", warning_msg):
+                    return False
+                # 사용자가 계속 진행을 선택한 경우
+                self.log("⚠️ 사용자 정보 확인을 건너뛰고 작업을 계속합니다.")
+                return True
             
             # 서버에 사용자 정보 확인 요청
             self.log("사용자 정보 확인 중...")
