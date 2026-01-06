@@ -91,7 +91,8 @@ class LoginActivity : AppCompatActivity() {
                     if (response.success && response.access_token != null) {
                         // 로그인 성공
                         Log.d("LoginActivity", "로그인 성공 - 토큰 저장 및 MainActivity 이동 시작")
-                        saveLoginInfo(response.access_token!!, userId, response.expires_at)
+                        val expiryDate = response.user_info?.expiry_date
+                        saveLoginInfo(response.access_token!!, userId, response.expires_at, expiryDate)
                         Toast.makeText(this@LoginActivity, "로그인 성공! MainActivity로 이동", Toast.LENGTH_SHORT).show()
                         
                         // 메인 화면으로 이동
@@ -149,11 +150,12 @@ class LoginActivity : AppCompatActivity() {
         }
     }
     
-    private fun saveLoginInfo(token: String, userId: String, expiresAt: String?) {
+    private fun saveLoginInfo(token: String, userId: String, expiresAt: String?, expiryDate: String?) {
         prefs.edit()
             .putString("access_token", token)
             .putString("user_id", userId)
             .putString("expires_at", expiresAt)
+            .putString("expiry_date", expiryDate)
             .putBoolean("is_logged_in", true)
             .apply()
     }

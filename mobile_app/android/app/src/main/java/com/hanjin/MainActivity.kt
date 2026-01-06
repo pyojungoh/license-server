@@ -17,10 +17,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.hanjin.ble.BLEService
+import java.text.SimpleDateFormat
+import java.util.*
 
 class MainActivity : AppCompatActivity() {
     
     private lateinit var tvStatus: TextView
+    private lateinit var tvUserInfo: TextView
     private lateinit var btnScan: Button
     private lateinit var btnSendToken: Button
     private lateinit var btnLogout: Button
@@ -62,9 +65,13 @@ class MainActivity : AppCompatActivity() {
         
         // UI 초기화
         tvStatus = findViewById(R.id.tvStatus)
+        tvUserInfo = findViewById(R.id.tvUserInfo)
         btnScan = findViewById(R.id.btnScan)
         btnSendToken = findViewById(R.id.btnSendToken)
         btnLogout = findViewById(R.id.btnLogout)
+        
+        // 사용자 정보 표시
+        displayUserInfo()
         
         // 블루투스 어댑터 초기화
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -97,6 +104,8 @@ class MainActivity : AppCompatActivity() {
                     if (success) {
                         updateStatus("토큰 전송 성공!\nESP32 인증 완료")
                         Toast.makeText(this@MainActivity, "토큰 전송 성공", Toast.LENGTH_SHORT).show()
+                        // 토큰 전송 성공 시 유효시간 업데이트
+                        displayUserInfo()
                     } else {
                         updateStatus("토큰 전송 실패")
                         Toast.makeText(this@MainActivity, "토큰 전송 실패", Toast.LENGTH_SHORT).show()
@@ -206,6 +215,94 @@ class MainActivity : AppCompatActivity() {
         tvStatus.text = message
     }
     
+    private fun displayUserInfo() {
+        val prefs = getSharedPreferences("hanjin_prefs", Context.MODE_PRIVATE)
+        val userId = prefs.getString("user_id", null)
+        val expiresAt = prefs.getString("expires_at", null)
+        val expiryDate = prefs.getString("expiry_date", null)
+        
+        val infoText = StringBuilder()
+        
+        // 로그인 아이디 표시
+        if (userId != null) {
+            infoText.append("로그인: $userId\n")
+        }
+        
+        // 토큰 유효시간 표시 (토큰 전송 성공 후에만)
+        if (expiresAt != null) {
+            try {
+                val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+                dateFormat.timeZone = TimeZone.getTimeZone("UTC")
+                val expiresAtDate = dateFormat.parse(expiresAt)
+                val now = Date()
+                
+                if (expiresAtDate != null) {
+                    val remaining = expiresAtDate.time - now.time
+                    
+                    if (remaining < 0) {
+                        infoText.append("토큰 만료됨\n")
+                    } else {
+                        val days = remaining / (1000 * 60 * 60 * 24)
+                        val hours = (remaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
+                        val minutes = (remaining % (1000 * 60 * 60)) / (1000 * 60)
+                        
+                        if (days > 0) {
+                            infoText.append("토큰 유효: ${days}일 ${hours}시간\n")
+                        } else if (hours > 0) {
+                            infoText.append("토큰 유효: ${hours}시간 ${minutes}분\n")
+                        } else {
+                            infoText.append("토큰 유효: ${minutes}분\n")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "토큰 만료시간 파싱 오류", e)
+                // 파싱 실패 시 원본 문자열 표시
+                infoText.append("토큰 만료: $expiresAt\n")
+            }
+        }
+        
+        // 사용자 만료날짜 표시
+        if (expiryDate != null) {
+            try {
+                val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val expiryDateParsed = dateFormat.parse(expiryDate)
+                val today = Calendar.getInstance()
+                today.set(Calendar.HOUR_OF_DAY, 0)
+                today.set(Calendar.MINUTE, 0)
+                today.set(Calendar.SECOND, 0)
+                today.set(Calendar.MILLISECOND, 0)
+                
+                if (expiryDateParsed != null) {
+                    val expiryCal = Calendar.getInstance()
+                    expiryCal.time = expiryDateParsed
+                    expiryCal.set(Calendar.HOUR_OF_DAY, 0)
+                    expiryCal.set(Calendar.MINUTE, 0)
+                    expiryCal.set(Calendar.SECOND, 0)
+                    expiryCal.set(Calendar.MILLISECOND, 0)
+                    
+                    val daysUntilExpiry = ((expiryCal.timeInMillis - today.timeInMillis) / (1000 * 60 * 60 * 24)).toInt()
+                    
+                    if (daysUntilExpiry < 0) {
+                        infoText.append("사용 만료: 만료됨")
+                    } else if (daysUntilExpiry == 0) {
+                        infoText.append("사용 만료: 오늘")
+                    } else {
+                        infoText.append("사용 만료: $expiryDate (${daysUntilExpiry}일 남음)")
+                    }
+                } else {
+                    infoText.append("사용 만료: $expiryDate")
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "만료날짜 파싱 오류", e)
+                // 파싱 실패 시 원본 문자열 표시
+                infoText.append("사용 만료: $expiryDate")
+            }
+        }
+        
+        tvUserInfo.text = infoText.toString()
+    }
+    
     private fun logout() {
         // SharedPreferences에서 로그인 정보 삭제
         val prefs = getSharedPreferences("hanjin_prefs", Context.MODE_PRIVATE)
@@ -213,6 +310,7 @@ class MainActivity : AppCompatActivity() {
             .remove("access_token")
             .remove("user_id")
             .remove("expires_at")
+            .remove("expiry_date")
             .putBoolean("is_logged_in", false)
             .apply()
         
