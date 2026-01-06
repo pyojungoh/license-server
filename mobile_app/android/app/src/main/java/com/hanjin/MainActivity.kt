@@ -23,6 +23,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvStatus: TextView
     private lateinit var btnScan: Button
     private lateinit var btnSendToken: Button
+    private lateinit var btnLogout: Button
     
     private var accessToken: String? = null
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -63,6 +64,7 @@ class MainActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tvStatus)
         btnScan = findViewById(R.id.btnScan)
         btnSendToken = findViewById(R.id.btnSendToken)
+        btnLogout = findViewById(R.id.btnLogout)
         
         // 블루투스 어댑터 초기화
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -116,6 +118,10 @@ class MainActivity : AppCompatActivity() {
             if (checkBluetoothPermissions()) {
                 sendTokenToESP32()
             }
+        }
+        
+        btnLogout.setOnClickListener {
+            logout()
         }
         
         updateStatus("ESP32 장치를 검색하세요")
@@ -198,6 +204,29 @@ class MainActivity : AppCompatActivity() {
     
     private fun updateStatus(message: String) {
         tvStatus.text = message
+    }
+    
+    private fun logout() {
+        // SharedPreferences에서 로그인 정보 삭제
+        val prefs = getSharedPreferences("hanjin_prefs", Context.MODE_PRIVATE)
+        prefs.edit()
+            .remove("access_token")
+            .remove("user_id")
+            .remove("expires_at")
+            .putBoolean("is_logged_in", false)
+            .apply()
+        
+        // BLE 연결 종료
+        bleService?.disconnect()
+        bleService?.stopScan()
+        
+        // LoginActivity로 이동
+        val loginIntent = Intent(this, LoginActivity::class.java)
+        loginIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        startActivity(loginIntent)
+        finish()
+        
+        Toast.makeText(this, "로그아웃되었습니다", Toast.LENGTH_SHORT).show()
     }
     
     override fun onRequestPermissionsResult(
