@@ -525,4 +525,89 @@ class UserAuthManager:
         except Exception as e:
             logger.error(f"토큰 소유자 확인 오류: {e}", exc_info=True)
             return False, False, f"오류가 발생했습니다: {str(e)}"
+    
+    def get_payment_account_info(self) -> Tuple[bool, Optional[Dict], str]:
+        """
+        입금 계좌정보 조회
+        
+        Returns:
+            (성공 여부, 계좌정보 딕셔너리, 메시지)
+        """
+        try:
+            response = requests.post(
+                f"{self.server_url}/api/get_payment_account_info",
+                json={},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    account_info = data.get('account_info', {})
+                    return True, account_info, "계좌정보 조회 성공"
+                else:
+                    return False, None, data.get('message', '계좌정보 조회 실패')
+            else:
+                data = response.json()
+                return False, None, data.get('message', '서버 오류가 발생했습니다.')
+                
+        except requests.exceptions.ConnectionError:
+            logger.error("서버 연결 실패")
+            return False, None, "서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요."
+        except requests.exceptions.Timeout:
+            logger.error("서버 응답 시간 초과")
+            return False, None, "서버 응답 시간이 초과되었습니다."
+        except Exception as e:
+            logger.error(f"계좌정보 조회 오류: {e}", exc_info=True)
+            return False, None, f"오류가 발생했습니다: {str(e)}"
+    
+    def request_payment_confirmation(self, depositor_name: str) -> Tuple[bool, str]:
+        """
+        입금 확인 요청
+        
+        Args:
+            depositor_name: 입금자명
+            
+        Returns:
+            (성공 여부, 메시지)
+        """
+        if not self.session_data or not self.session_data.get("user_id"):
+            return False, "로그인이 필요합니다."
+        
+        user_id = self.session_data.get("user_id")
+        
+        try:
+            payload = {
+                "user_id": user_id,
+                "depositor_name": depositor_name
+            }
+            
+            response = requests.post(
+                f"{self.server_url}/api/request_payment_confirmation",
+                json=payload,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    logger.info(f"입금 확인 요청 성공: {user_id}")
+                    return True, data.get('message', '입금 확인 요청이 전송되었습니다.')
+                else:
+                    error_msg = data.get('message', '입금 확인 요청 실패')
+                    logger.warning(f"입금 확인 요청 실패: {error_msg}")
+                    return False, error_msg
+            else:
+                data = response.json()
+                return False, data.get('message', '서버 오류가 발생했습니다.')
+                
+        except requests.exceptions.ConnectionError:
+            logger.error("서버 연결 실패")
+            return False, "서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요."
+        except requests.exceptions.Timeout:
+            logger.error("서버 응답 시간 초과")
+            return False, "서버 응답 시간이 초과되었습니다."
+        except Exception as e:
+            logger.error(f"입금 확인 요청 오류: {e}", exc_info=True)
+            return False, f"오류가 발생했습니다: {str(e)}"
 

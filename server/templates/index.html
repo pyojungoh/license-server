@@ -274,6 +274,7 @@
             <button class="tab" onclick="showTab('create', this)">사용자 생성</button>
             <button class="tab" onclick="showTab('list', this)">사용자 목록</button>
             <button class="tab" onclick="showTab('pricing', this)">사용료 설정</button>
+            <button class="tab" onclick="showTab('account', this)">계좌정보 설정</button>
             <button class="tab" onclick="showTab('statistics', this)">통계</button>
         </div>
         
@@ -371,6 +372,32 @@
                 <button onclick="addPaymentMethod()" class="secondary">추가</button>
             </div>
             <div id="payment-methods-list"></div>
+        </div>
+        
+        <!-- 계좌정보 설정 -->
+        <div id="account" class="tab-content">
+            <h2>입금 계좌정보 설정</h2>
+            <p style="margin-bottom: 20px; color: #666; font-size: 12px;">사용자에게 표시될 입금 계좌정보를 설정하세요.</p>
+            <form id="account-form">
+                <div class="form-group">
+                    <label>은행명</label>
+                    <input type="text" id="account_bank_name" placeholder="예: 국민은행" maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label>계좌번호</label>
+                    <input type="text" id="account_number" placeholder="예: 123-456-789012" maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label>예금주</label>
+                    <input type="text" id="account_holder" placeholder="예: 홍길동" maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label>메모</label>
+                    <textarea id="account_memo" rows="5" placeholder="사용자에게 표시할 추가 안내사항을 입력하세요."></textarea>
+                </div>
+                <button type="submit">저장</button>
+                <button type="button" onclick="loadAccountInfo()" class="secondary" style="margin-left: 10px;">새로고침</button>
+            </form>
         </div>
         
         <!-- 통계 -->
@@ -1038,6 +1065,73 @@
             } catch (error) {
                 showAlert('오류가 발생했습니다: ' + error.message, 'error');
             }
+        });
+        
+        // 계좌정보 로드
+        async function loadAccountInfo() {
+            try {
+                const response = await fetch(`${API_URL}/api/get_payment_account_info`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({})
+                });
+                
+                const result = await response.json();
+                
+                if (result.success && result.account_info) {
+                    const info = result.account_info;
+                    document.getElementById('account_bank_name').value = info.bank_name || '';
+                    document.getElementById('account_number').value = info.account_number || '';
+                    document.getElementById('account_holder').value = info.account_holder || '';
+                    document.getElementById('account_memo').value = info.memo || '';
+                } else {
+                    // 계좌정보가 없으면 빈 값으로 초기화
+                    document.getElementById('account_bank_name').value = '';
+                    document.getElementById('account_number').value = '';
+                    document.getElementById('account_holder').value = '';
+                    document.getElementById('account_memo').value = '';
+                }
+            } catch (error) {
+                showAlert('계좌정보를 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+        
+        // 계좌정보 저장
+        document.getElementById('account-form')?.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const accountInfo = {
+                bank_name: document.getElementById('account_bank_name').value.trim(),
+                account_number: document.getElementById('account_number').value.trim(),
+                account_holder: document.getElementById('account_holder').value.trim(),
+                memo: document.getElementById('account_memo').value.trim()
+            };
+            
+            try {
+                const response = await fetch(`${API_URL}/api/update_payment_account_info`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        admin_key: ADMIN_KEY,
+                        ...accountInfo
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert(result.message, 'success');
+                } else {
+                    showAlert(result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('오류가 발생했습니다: ' + error.message, 'error');
+            }
+        });
+        
+        // 계좌정보 탭 열릴 때 자동 로드
+        document.querySelector('button[onclick*="account"]')?.addEventListener('click', function() {
+            setTimeout(loadAccountInfo, 100);
         });
         
         // 결제 통계 로드

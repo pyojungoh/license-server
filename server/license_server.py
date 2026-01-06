@@ -443,6 +443,19 @@ def init_db():
                 )
             """)
             
+            # 계좌정보 테이블 (관리자가 설정)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS payment_account_info (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    bank_name TEXT,
+                    account_number TEXT,
+                    account_holder TEXT,
+                    memo TEXT,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_by TEXT
+                )
+            """)
+            
             # 사용자 기기 등록 테이블 (1인 1기기 정책용)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS user_devices (
@@ -3948,6 +3961,253 @@ def delete_payment():
         return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
     finally:
         conn.close()
+
+@app.route('/api/get_payment_account_info', methods=['POST'])
+def get_payment_account_info():
+    """입금 계좌정보 조회"""
+    try:
+        conn = get_db_connection()
+        if USE_POSTGRESQL:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
+            conn.row_factory = sqlite3.Row
+        
+        try:
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    SELECT bank_name, account_number, account_holder, memo, updated_at
+                    FROM payment_account_info
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """)
+                result = cursor.fetchone()
+                if result:
+                    account_info = {
+                        'bank_name': result.get('bank_name', ''),
+                        'account_number': result.get('account_number', ''),
+                        'account_holder': result.get('account_holder', ''),
+                        'memo': result.get('memo', ''),
+                        'updated_at': result.get('updated_at', '').isoformat() if result.get('updated_at') else ''
+                    }
+                else:
+                    account_info = {
+                        'bank_name': '',
+                        'account_number': '',
+                        'account_holder': '',
+                        'memo': '',
+                        'updated_at': ''
+                    }
+            else:
+                cursor.execute("""
+                    SELECT bank_name, account_number, account_holder, memo, updated_at
+                    FROM payment_account_info
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """)
+                row = cursor.fetchone()
+                if row:
+                    account_info = {
+                        'bank_name': row[0] or '',
+                        'account_number': row[1] or '',
+                        'account_holder': row[2] or '',
+                        'memo': row[3] or '',
+                        'updated_at': row[4] or ''
+                    }
+                else:
+                    account_info = {
+                        'bank_name': '',
+                        'account_number': '',
+                        'account_holder': '',
+                        'memo': '',
+                        'updated_at': ''
+                    }
+            
+            return jsonify({
+                'success': True,
+                'account_info': account_info
+            })
+        except Exception as e:
+            logger.error(f"계좌정보 조회 오류: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': f'계좌정보 조회 중 오류가 발생했습니다: {str(e)}'
+            }), 500
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"계좌정보 조회 오류: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': f'오류가 발생했습니다: {str(e)}'
+        }), 500
+
+@app.route('/api/request_payment_confirmation', methods=['POST'])
+def request_payment_confirmation():
+    """입금 확인 요청 (텔레그램 메시지 전송)"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'message': '요청 데이터가 없습니다.'}), 400
+        
+        user_id = data.get('user_id', '').strip()
+        depositor_name = data.get('depositor_name', '').strip()
+        
+        if not user_id or not depositor_name:
+            return jsonify({'success': False, 'message': '아이디와 입금자명을 입력해주세요.'}), 400
+        
+        # 사용자 정보 조회
+        conn = get_db_connection()
+        if USE_POSTGRESQL:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
+            conn.row_factory = sqlite3.Row
+        
+        try:
+            if USE_POSTGRESQL:
+                cursor.execute("SELECT name, phone FROM users WHERE user_id = %s", (user_id,))
+            else:
+                cursor.execute("SELECT name, phone FROM users WHERE user_id = ?", (user_id,))
+            
+            user_row = cursor.fetchone()
+            if not user_row:
+                return jsonify({'success': False, 'message': '사용자를 찾을 수 없습니다.'}), 404
+            
+            if USE_POSTGRESQL:
+                user_name = user_row.get('name', '')
+                user_phone = user_row.get('phone', '')
+            else:
+                user_name = user_row[0] or ''
+                user_phone = user_row[1] or ''
+        finally:
+            conn.close()
+        
+        # 텔레그램 메시지 포맷팅
+        try:
+            from datetime import timezone, timedelta
+            kst = timezone(timedelta(hours=9))
+            now = datetime.datetime.now(timezone.utc).astimezone(kst)
+            time_str = now.strftime('%Y-%m-%d %H:%M:%S')
+            
+            message = f"""<b>💰 입금 확인 요청</b>
+
+<b>아이디:</b> {user_id}
+<b>등록된 이름:</b> {user_name}
+<b>전화번호:</b> {user_phone}
+<b>입금자명:</b> {depositor_name}
+
+<i>요청 시간: {time_str}</i>"""
+            
+            # 텔레그램으로 전송
+            telegram_sent = send_telegram_message(message)
+            
+            if telegram_sent:
+                return jsonify({
+                    'success': True,
+                    'message': '입금 확인 요청이 전송되었습니다.'
+                }), 200
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': '입금 확인 요청 전송에 실패했습니다. 나중에 다시 시도해주세요.'
+                }), 500
+        except Exception as format_error:
+            logger.error(f"메시지 포맷팅 오류: {format_error}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': f'메시지 처리 중 오류가 발생했습니다: {str(format_error)}'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"입금 확인 요청 오류: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': f'오류가 발생했습니다: {str(e)}'
+        }), 500
+
+@app.route('/api/update_payment_account_info', methods=['POST'])
+def update_payment_account_info():
+    """입금 계좌정보 업데이트 (관리자용)"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'message': '요청 데이터가 없습니다.'}), 400
+        
+        admin_key = data.get('admin_key', '')
+        if admin_key != ADMIN_KEY:
+            return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+        
+        bank_name = data.get('bank_name', '').strip()
+        account_number = data.get('account_number', '').strip()
+        account_holder = data.get('account_holder', '').strip()
+        memo = data.get('memo', '').strip()
+        
+        conn = get_db_connection()
+        if USE_POSTGRESQL:
+            cursor = conn.cursor()
+        else:
+            cursor = conn.cursor()
+        
+        try:
+            # 기존 계좌정보 확인
+            if USE_POSTGRESQL:
+                cursor.execute("SELECT COUNT(*) FROM payment_account_info")
+            else:
+                cursor.execute("SELECT COUNT(*) FROM payment_account_info")
+            
+            count = cursor.fetchone()[0] if USE_POSTGRESQL else cursor.fetchone()[0]
+            
+            if count > 0:
+                # 기존 정보 업데이트
+                if USE_POSTGRESQL:
+                    cursor.execute("""
+                        UPDATE payment_account_info 
+                        SET bank_name = %s, account_number = %s, account_holder = %s, 
+                            memo = %s, updated_at = CURRENT_TIMESTAMP, updated_by = %s
+                        WHERE id = (SELECT id FROM payment_account_info ORDER BY updated_at DESC LIMIT 1)
+                    """, (bank_name, account_number, account_holder, memo, 'admin'))
+                else:
+                    cursor.execute("""
+                        UPDATE payment_account_info 
+                        SET bank_name = ?, account_number = ?, account_holder = ?, 
+                            memo = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
+                        WHERE id = (SELECT id FROM payment_account_info ORDER BY updated_at DESC LIMIT 1)
+                    """, (bank_name, account_number, account_holder, memo, 'admin'))
+            else:
+                # 새로 추가
+                if USE_POSTGRESQL:
+                    cursor.execute("""
+                        INSERT INTO payment_account_info (bank_name, account_number, account_holder, memo, updated_by)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (bank_name, account_number, account_holder, memo, 'admin'))
+                else:
+                    cursor.execute("""
+                        INSERT INTO payment_account_info (bank_name, account_number, account_holder, memo, updated_by)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (bank_name, account_number, account_holder, memo, 'admin'))
+            
+            conn.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': '계좌정보가 저장되었습니다.'
+            })
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"계좌정보 업데이트 오류: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': f'계좌정보 저장 중 오류가 발생했습니다: {str(e)}'
+            }), 500
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"계좌정보 업데이트 오류: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': f'오류가 발생했습니다: {str(e)}'
+        }), 500
 
 if __name__ == '__main__':
     # 데이터베이스 초기화

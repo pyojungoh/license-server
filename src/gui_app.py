@@ -278,6 +278,7 @@ class HanjinAutomationApp:
         # 도움말 메뉴
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="도움말", menu=help_menu)
+        help_menu.add_command(label="내 입금계좌정보", command=self.show_payment_account_window)
         help_menu.add_command(label="관리자에게 메시지 보내기", command=self.show_admin_message_window)
         
         # 메인 프레임
@@ -564,51 +565,103 @@ class HanjinAutomationApp:
             return True  # 오류 발생해도 계속 진행
     
     def verify_token_owner(self) -> bool:
-        """ESP32에 등록된 토큰의 소유자와 PC 프로그램 로그인 사용자 일치 확인"""
+        """
+        블루투스 기기에 등록된 사용자 정보와 PC 프로그램 로그인 사용자 일치 확인
+        
+        작업규칙 준수: 1인 1아이디 정책
+        - PC 프로그램 로그인 사용자와 블루투스 기기에 등록된 사용자 정보가 일치해야만 작동
+        - 다른 사용자의 정보가 기기에 등록되어 있으면 차단
+        """
         port = self.port_var.get()
         if not port:
-            self.log("⚠️ COM 포트가 선택되지 않았습니다. 토큰 소유자 확인을 건너뜁니다.")
-            return True  # 포트가 없어도 검증 스킵하고 계속 진행
+            self.log("⚠️ COM 포트가 선택되지 않았습니다. 사용자 정보 확인을 건너뜁니다.")
+            # 포트가 없으면 검증 불가능하므로 사용자에게 안내
+            if not messagebox.askyesno("경고", 
+                "블루투스 기기가 연결되지 않아 사용자 정보 확인을 할 수 없습니다.\n\n"
+                "보안을 위해 사용자 정보 확인이 권장되지만,\n"
+                "기기가 연결되지 않아 확인을 건너뛰고 계속 진행하시겠습니까?"):
+                return False
+            return True  # 사용자가 계속 진행을 선택한 경우
         
         try:
             # ESP32 연결
             controller = BluetoothController(port=port, baudrate=115200)
             if not controller.connect():
-                self.log("⚠️ AI BOT 연결에 실패했습니다. 토큰 소유자 확인을 건너뜁니다.")
-                return True  # 연결 실패해도 검증 스킵하고 계속 진행
+                self.log("⚠️ 블루투스 기기 연결에 실패했습니다. 사용자 정보 확인을 건너뜁니다.")
+                # 연결 실패 시 사용자에게 안내
+                if not messagebox.askyesno("경고",
+                    "블루투스 기기 연결에 실패하여 사용자 정보 확인을 할 수 없습니다.\n\n"
+                    "보안을 위해 사용자 정보 확인이 권장되지만,\n"
+                    "연결 실패로 확인을 건너뛰고 계속 진행하시겠습니까?"):
+                    return False
+                return True  # 사용자가 계속 진행을 선택한 경우
             
             # 토큰 조회
-            self.log("ESP32에 등록된 토큰 확인 중...")
+            self.log("블루투스 기기에 등록된 사용자 정보 확인 중...")
             token = controller.get_token(log_callback=lambda msg: self.log(msg))
             controller.disconnect()
             
             if not token:
-                self.log("⚠️ ESP32에 토큰이 등록되지 않았습니다. 모바일 앱에서 토큰을 전송해주세요.")
-                messagebox.showwarning("경고", "ESP32에 토큰이 등록되지 않았습니다.\n\n모바일 앱에서 ESP32로 토큰을 전송한 후 다시 시도해주세요.")
+                self.log("⚠️ 블루투스 기기에 사용자 정보가 등록되지 않았습니다. 모바일 앱에서 전송해주세요.")
+                warning_msg = (
+                    "블루투스 기기에 사용자 정보가 등록되지 않았습니다.\n\n"
+                    "작업을 시작하려면 모바일 앱에서 기기로 사용자 정보를 전송해야 합니다.\n\n"
+                    "다음 순서로 진행해주세요:\n\n"
+                    "1. 모바일 앱 실행\n"
+                    "2. PC 프로그램과 같은 아이디로 로그인\n"
+                    "3. 모바일 앱에서 블루투스 기기로 사용자 정보 전송\n"
+                    "4. PC 프로그램에서 다시 시도\n\n"
+                    "※ 사용자 정보가 없으면 작업을 시작할 수 없습니다."
+                )
+                messagebox.showwarning("사용자 정보 없음", warning_msg)
                 return False
             
-            # 서버에 토큰 소유자 확인 요청
-            self.log("토큰 소유자 확인 중...")
+            # 서버에 사용자 정보 확인 요청
+            self.log("사용자 정보 확인 중...")
             success, match, message = self.user_auth_manager.check_token_owner(token, self.current_user_id)
             
             if not success:
-                self.log(f"⚠️ 토큰 소유자 확인 실패: {message}")
-                if not messagebox.askyesno("확인", f"토큰 소유자 확인에 실패했습니다:\n{message}\n\n계속 진행하시겠습니까?"):
+                self.log(f"⚠️ 사용자 정보 확인 실패: {message}")
+                if not messagebox.askyesno("확인", f"사용자 정보 확인에 실패했습니다:\n{message}\n\n계속 진행하시겠습니까?"):
                     return False
                 return True  # 확인 실패해도 사용자가 계속 진행을 선택하면 True 반환
             
             if not match:
-                self.log(f"❌ 토큰 소유자가 일치하지 않습니다: {message}")
-                messagebox.showerror("오류", f"토큰 소유자가 일치하지 않습니다.\n\n{message}\n\n모바일 앱에서 현재 로그인한 사용자({self.current_user_id})의 토큰을 ESP32로 전송해주세요.")
+                self.log(f"❌ 사용자 정보가 일치하지 않습니다: {message}")
+                # 서버 메시지에서 실제 사용자 정보 추출 시도
+                other_user = message
+                if "사용자" in message and "(" in message:
+                    # 메시지에서 다른 사용자 정보 추출
+                    try:
+                        start_idx = message.find("(")
+                        end_idx = message.find(")")
+                        if start_idx != -1 and end_idx != -1:
+                            other_user = message[start_idx+1:end_idx]
+                    except:
+                        pass
+                
+                error_msg = (
+                    f"⚠️ 사용자 정보가 일치하지 않습니다.\n\n"
+                    f"PC 프로그램: {self.current_user_id} (현재 로그인한 사용자)\n"
+                    f"블루투스 기기: {other_user} (다른 사용자)\n\n"
+                    f"같은 사용자로 로그인해야 작업을 진행할 수 있습니다.\n\n"
+                    f"다음 순서로 진행해주세요:\n\n"
+                    f"1. 모바일 앱 실행\n"
+                    f"2. PC 프로그램과 같은 아이디({self.current_user_id})로 로그인\n"
+                    f"3. 모바일 앱에서 블루투스 기기로 사용자 정보 전송\n"
+                    f"4. PC 프로그램에서 다시 시도\n\n"
+                    f"※ 다른 사용자의 정보가 기기에 등록되어 있으면 작업할 수 없습니다."
+                )
+                messagebox.showerror("사용자 정보 불일치", error_msg)
                 return False
             
-            self.log("✓ 토큰 소유자 확인 완료")
+            self.log("✓ 사용자 정보 확인 완료")
             return True
             
         except Exception as e:
-            self.log(f"⚠️ 토큰 소유자 확인 중 오류 발생: {e}")
+            self.log(f"⚠️ 사용자 정보 확인 중 오류 발생: {e}")
             # 오류 발생 시 사용자에게 확인 요청
-            if not messagebox.askyesno("확인", f"토큰 소유자 확인 중 오류가 발생했습니다:\n{e}\n\n계속 진행하시겠습니까?"):
+            if not messagebox.askyesno("확인", f"사용자 정보 확인 중 오류가 발생했습니다:\n{e}\n\n계속 진행하시겠습니까?"):
                 return False
             return True  # 오류 발생해도 사용자가 계속 진행을 선택하면 True 반환
     
@@ -741,6 +794,19 @@ class HanjinAutomationApp:
         except:
             # 검증 중 오류 발생 시에도 계속 진행 (자동화가 멈추지 않도록)
             self.log("MAC 주소 검증 중 오류 발생, 계속 진행합니다.")
+        
+        # 사용자 정보 검증 (필수 - 작업규칙: 1인 1아이디 정책)
+        # PC 프로그램 로그인 사용자와 블루투스 기기에 등록된 사용자 정보가 일치해야만 작동
+        try:
+            if not self.verify_token_owner():
+                # 사용자 정보가 일치하지 않으면 작업 차단
+                self.log("❌ 사용자 정보 검증 실패로 작업이 중단되었습니다.")
+                return
+        except Exception as e:
+            # 검증 중 오류 발생 시 작업 차단 (보안을 위해)
+            self.log(f"⚠️ 사용자 정보 검증 중 오류 발생: {e}")
+            if not messagebox.askyesno("확인", f"사용자 정보 확인 중 오류가 발생했습니다:\n{e}\n\n보안상의 이유로 작업을 중단하는 것을 권장합니다.\n\n계속 진행하시겠습니까?"):
+                return
         
         if self.is_running:
             return
