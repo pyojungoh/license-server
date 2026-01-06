@@ -563,6 +563,55 @@ class HanjinAutomationApp:
             self.log("MAC 주소 검증을 건너뛰고 계속 진행합니다.")
             return True  # 오류 발생해도 계속 진행
     
+    def verify_token_owner(self) -> bool:
+        """ESP32에 등록된 토큰의 소유자와 PC 프로그램 로그인 사용자 일치 확인"""
+        port = self.port_var.get()
+        if not port:
+            self.log("⚠️ COM 포트가 선택되지 않았습니다. 토큰 소유자 확인을 건너뜁니다.")
+            return True  # 포트가 없어도 검증 스킵하고 계속 진행
+        
+        try:
+            # ESP32 연결
+            controller = BluetoothController(port=port, baudrate=115200)
+            if not controller.connect():
+                self.log("⚠️ AI BOT 연결에 실패했습니다. 토큰 소유자 확인을 건너뜁니다.")
+                return True  # 연결 실패해도 검증 스킵하고 계속 진행
+            
+            # 토큰 조회
+            self.log("ESP32에 등록된 토큰 확인 중...")
+            token = controller.get_token(log_callback=lambda msg: self.log(msg))
+            controller.disconnect()
+            
+            if not token:
+                self.log("⚠️ ESP32에 토큰이 등록되지 않았습니다. 모바일 앱에서 토큰을 전송해주세요.")
+                messagebox.showwarning("경고", "ESP32에 토큰이 등록되지 않았습니다.\n\n모바일 앱에서 ESP32로 토큰을 전송한 후 다시 시도해주세요.")
+                return False
+            
+            # 서버에 토큰 소유자 확인 요청
+            self.log("토큰 소유자 확인 중...")
+            success, match, message = self.user_auth_manager.check_token_owner(token, self.current_user_id)
+            
+            if not success:
+                self.log(f"⚠️ 토큰 소유자 확인 실패: {message}")
+                if not messagebox.askyesno("확인", f"토큰 소유자 확인에 실패했습니다:\n{message}\n\n계속 진행하시겠습니까?"):
+                    return False
+                return True  # 확인 실패해도 사용자가 계속 진행을 선택하면 True 반환
+            
+            if not match:
+                self.log(f"❌ 토큰 소유자가 일치하지 않습니다: {message}")
+                messagebox.showerror("오류", f"토큰 소유자가 일치하지 않습니다.\n\n{message}\n\n모바일 앱에서 현재 로그인한 사용자({self.current_user_id})의 토큰을 ESP32로 전송해주세요.")
+                return False
+            
+            self.log("✓ 토큰 소유자 확인 완료")
+            return True
+            
+        except Exception as e:
+            self.log(f"⚠️ 토큰 소유자 확인 중 오류 발생: {e}")
+            # 오류 발생 시 사용자에게 확인 요청
+            if not messagebox.askyesno("확인", f"토큰 소유자 확인 중 오류가 발생했습니다:\n{e}\n\n계속 진행하시겠습니까?"):
+                return False
+            return True  # 오류 발생해도 사용자가 계속 진행을 선택하면 True 반환
+    
     def check_bluetooth_status(self):
         """블루투스 상태 주기적 확인 (5초마다)"""
         if not self.is_running:

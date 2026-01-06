@@ -252,6 +252,76 @@ class BluetoothController:
         self.connect()
         return self
     
+    def get_token(self, log_callback=None) -> Optional[str]:
+        """
+        ESP32에 등록된 토큰 조회
+        
+        Args:
+            log_callback: 로그 메시지를 전달할 콜백 함수 (선택사항)
+        
+        Returns:
+            토큰 문자열 또는 None (토큰이 없거나 조회 실패 시)
+        """
+        if not self.serial_conn or not self.serial_conn.is_open:
+            msg = "BLT AI 로봇이 연결되지 않았습니다."
+            logger.error(msg)
+            if log_callback:
+                log_callback(msg)
+            return None
+        
+        try:
+            # 기존 버퍼 비우기
+            self.serial_conn.reset_input_buffer()
+            if log_callback:
+                log_callback("AI BOT에 토큰 조회 요청 전송 중...")
+            
+            # "GET_TOKEN" 명령 전송
+            command = "GET_TOKEN\n"
+            self.serial_conn.write(command.encode('utf-8'))
+            self.serial_conn.flush()
+            if log_callback:
+                log_callback("AI BOT 명령 전송: GET_TOKEN")
+            
+            # 응답 대기 (최대 2초)
+            timeout_time = time.time() + 2.0
+            
+            while time.time() < timeout_time:
+                if self.serial_conn.in_waiting > 0:
+                    line = self.serial_conn.readline().decode('utf-8', errors='ignore').strip()
+                    if line:
+                        if log_callback:
+                            log_callback(f"AI BOT 응답: {line}")
+                        logger.debug(f"AI BOT 응답: {line}")
+                        
+                        # "TOKEN:" 접두사가 있는 경우 처리
+                        if line.startswith('TOKEN:'):
+                            token_part = line[6:].strip()  # "TOKEN:" 제거
+                            if token_part == "NOT_SET":
+                                msg = "ESP32에 토큰이 등록되지 않았습니다."
+                                logger.warning(msg)
+                                if log_callback:
+                                    log_callback(msg)
+                                return None
+                            elif token_part:
+                                logger.info("토큰 조회 성공")
+                                if log_callback:
+                                    log_callback("토큰 조회 성공")
+                                return token_part
+                time.sleep(0.1)
+            
+            msg = "토큰 조회 타임아웃 (2초)"
+            logger.warning(msg)
+            if log_callback:
+                log_callback(msg)
+            return None
+            
+        except Exception as e:
+            msg = f"토큰 조회 실패: {e}"
+            logger.error(msg)
+            if log_callback:
+                log_callback(msg)
+            return None
+    
     def __exit__(self, exc_type, exc_val, exc_tb):
         """컨텍스트 매니저 종료"""
         self.disconnect()

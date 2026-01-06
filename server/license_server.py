@@ -2025,6 +2025,114 @@ def verify_token():
         'user_id': user_id
     })
 
+@app.route('/api/check_token_owner', methods=['POST'])
+def check_token_owner():
+    """
+    토큰 소유자 확인 (PC 프로그램에서 호출)
+    ESP32에 등록된 토큰의 소유자가 PC 프로그램 로그인 사용자와 일치하는지 확인
+    """
+    data = request.json
+    access_token = data.get('access_token', '').strip()
+    pc_user_id = data.get('user_id', '').strip()
+    
+    if not access_token or not pc_user_id:
+        return jsonify({
+            'success': False,
+            'match': False,
+            'message': '토큰과 사용자 ID가 필요합니다.'
+        }), 400
+    
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        cursor = conn.cursor()
+    
+    try:
+        # 토큰 해시로 검색
+        token_hash = hash_token(access_token)
+        
+        if USE_POSTGRESQL:
+            cursor.execute("""
+                SELECT ut.user_id, ut.is_active, ut.expires_at, u.is_active as user_active
+                FROM user_access_tokens ut
+                JOIN users u ON ut.user_id = u.user_id
+                WHERE ut.token_hash = %s AND ut.is_active = TRUE
+            """, (token_hash,))
+        else:
+            cursor.execute("""
+                SELECT ut.user_id, ut.is_active, ut.expires_at, u.is_active as user_active
+                FROM user_access_tokens ut
+                JOIN users u ON ut.user_id = u.user_id
+                WHERE ut.token_hash = ? AND ut.is_active = 1
+            """, (token_hash,))
+        
+        token_data = cursor.fetchone()
+        
+        if not token_data:
+            return jsonify({
+                'success': True,
+                'match': False,
+                'message': '유효하지 않은 토큰입니다.'
+            })
+        
+        # 만료 시간 확인
+        if USE_POSTGRESQL:
+            token_user_id = token_data.get('user_id')
+            expires_at_str = token_data.get('expires_at')
+            user_active = token_data.get('user_active')
+        else:
+            token_user_id = token_data[0]
+            expires_at_str = token_data[2]
+            user_active = bool(token_data[3])
+        
+        if isinstance(expires_at_str, str):
+            expires_at = datetime.datetime.fromisoformat(expires_at_str)
+        else:
+            expires_at = expires_at_str
+        
+        now = datetime.datetime.now()
+        
+        if expires_at < now:
+            return jsonify({
+                'success': True,
+                'match': False,
+                'message': '토큰이 만료되었습니다.'
+            })
+        
+        if not user_active:
+            return jsonify({
+                'success': True,
+                'match': False,
+                'message': '토큰 소유자가 비활성화되었습니다.'
+            })
+        
+        # PC 프로그램 로그인 사용자와 토큰 소유자 일치 확인
+        if token_user_id == pc_user_id:
+            return jsonify({
+                'success': True,
+                'match': True,
+                'message': '토큰 소유자가 일치합니다.',
+                'token_user_id': token_user_id
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'match': False,
+                'message': f'토큰 소유자가 일치하지 않습니다. (토큰 소유자: {token_user_id})',
+                'token_user_id': token_user_id
+            })
+    
+    except Exception as e:
+        logger.error(f"토큰 소유자 확인 오류: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'match': False,
+            'message': f'오류가 발생했습니다: {str(e)}'
+        }), 500
+    finally:
+        conn.close()
+
 @app.route('/api/request_device_change', methods=['POST'])
 def request_device_change():
     """
