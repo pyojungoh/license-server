@@ -418,6 +418,39 @@
         
     </div>
     
+    <!-- 만료일 수정 모달 -->
+    <div id="expiryEditModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeExpiryEditModal()">&times;</span>
+            <h2 style="font-size: 18px; margin-bottom: 15px;">만료일 수정</h2>
+            <form id="expiry-edit-form">
+                <div class="form-group">
+                    <label>사용자 ID</label>
+                    <input type="text" id="modal_expiry_user_id" readonly style="background: #f5f5f5;">
+                </div>
+                <div class="form-group">
+                    <label>현재 만료일</label>
+                    <input type="text" id="modal_current_expiry" readonly style="background: #f5f5f5;">
+                </div>
+                <div class="form-group">
+                    <label>기간 조정 (일) *</label>
+                    <input type="number" id="modal_expiry_days" value="0" required style="width: 100px; display: inline-block;">
+                    <span style="margin-left: 10px; color: #666; font-size: 12px;">
+                        (양수: 연장, 음수: 단축)
+                    </span>
+                </div>
+                <div class="form-group">
+                    <label>새 만료일 (미리보기)</label>
+                    <input type="text" id="modal_new_expiry_preview" readonly style="background: #f0f0f0; color: #333;">
+                </div>
+                <div style="margin-top: 20px;">
+                    <button type="submit">저장</button>
+                    <button type="button" onclick="closeExpiryEditModal()" class="secondary" style="margin-left: 10px;">취소</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
     <!-- 구독 연장 모달 -->
     <div id="extendModal" class="modal">
         <div class="modal-content">
@@ -561,6 +594,45 @@
         // 구독 연장 모달 닫기
         function closeExtendModal() {
             document.getElementById('extendModal').style.display = 'none';
+        }
+        
+        // 만료일 수정 모달 열기
+        function openExpiryEditModal(userId, currentExpiry) {
+            document.getElementById('modal_expiry_user_id').value = userId;
+            document.getElementById('modal_current_expiry').value = currentExpiry ? new Date(currentExpiry).toLocaleDateString('ko-KR') : '없음';
+            document.getElementById('modal_expiry_days').value = '0';
+            document.getElementById('modal_new_expiry_preview').value = '';
+            
+            // 기간 조정 시 미리보기 업데이트
+            document.getElementById('modal_expiry_days').addEventListener('input', function() {
+                updateExpiryPreview();
+            });
+            
+            updateExpiryPreview();
+            document.getElementById('expiryEditModal').style.display = 'block';
+        }
+        
+        // 만료일 수정 모달 닫기
+        function closeExpiryEditModal() {
+            document.getElementById('expiryEditModal').style.display = 'none';
+        }
+        
+        // 만료일 미리보기 업데이트
+        function updateExpiryPreview() {
+            const currentExpiry = document.getElementById('modal_current_expiry').value;
+            const days = parseInt(document.getElementById('modal_expiry_days').value) || 0;
+            
+            if (!currentExpiry || currentExpiry === '없음') {
+                // 만료일이 없으면 오늘 날짜 기준으로 계산
+                const today = new Date();
+                today.setDate(today.getDate() + days);
+                document.getElementById('modal_new_expiry_preview').value = today.toLocaleDateString('ko-KR');
+            } else {
+                // 현재 만료일 기준으로 계산
+                const expiryDate = new Date(currentExpiry);
+                expiryDate.setDate(expiryDate.getDate() + days);
+                document.getElementById('modal_new_expiry_preview').value = expiryDate.toLocaleDateString('ko-KR');
+            }
         }
         
         // 모달 외부 클릭 시 닫기
@@ -935,7 +1007,7 @@
                                 <td><strong style="font-size: 12px;">${user.user_id}</strong></td>
                                 <td style="font-size: 12px;">${user.name || '-'}</td>
                                 <td style="vertical-align: middle; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${user.email || ''}">${emailDisplay}</td>
-                                <td class="date-short" style="vertical-align: middle;">${expiryDisplay}</td>
+                                <td class="date-short" style="vertical-align: middle; cursor: pointer;" onclick="openExpiryEditModal('${user.user_id}', '${user.expiry_date || ''}')" title="클릭하여 만료일 수정">${expiryDisplay}</td>
                                 <td style="vertical-align: middle;">
                                     ${statusBadge}
                                     ${isActive && !isExpired ? `<button onclick="toggleUserActive('${user.user_id}', false)" style="padding: 3px 8px; font-size: 10px; margin-left: 5px; background: #dc3545;" class="secondary">중지</button>` : ''}

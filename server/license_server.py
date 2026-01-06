@@ -4275,6 +4275,119 @@ def update_payment_account_info():
             'message': f'오류가 발생했습니다: {str(e)}'
         }), 500
 
+@app.route('/api/adjust_user_expiry', methods=['POST'])
+def adjust_user_expiry():
+    """사용자 만료일 수동 조정 (관리자용)"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'message': '요청 데이터가 없습니다.'}), 400
+        
+        admin_key = data.get('admin_key', '')
+        if admin_key != ADMIN_KEY:
+            return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+        
+        user_id = data.get('user_id', '').strip()
+        days = data.get('days', 0)
+        
+        if not user_id:
+            return jsonify({'success': False, 'message': '사용자 ID가 필요합니다.'}), 400
+        
+        if not isinstance(days, int):
+            try:
+                days = int(days)
+            except:
+                return jsonify({'success': False, 'message': '기간은 숫자여야 합니다.'}), 400
+        
+        conn = get_db_connection()
+        if USE_POSTGRESQL:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
+            conn.row_factory = sqlite3.Row
+        
+        try:
+            # 사용자 정보 조회
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    SELECT expiry_date 
+                    FROM user_subscriptions 
+                    WHERE user_id = %s AND is_active = TRUE
+                    ORDER BY expiry_date DESC
+                    LIMIT 1
+                """, (user_id,))
+            else:
+                cursor.execute("""
+                    SELECT expiry_date 
+                    FROM user_subscriptions 
+                    WHERE user_id = ? AND is_active = 1
+                    ORDER BY expiry_date DESC
+                    LIMIT 1
+                """, (user_id,))
+            
+            subscription = cursor.fetchone()
+            
+            if not subscription:
+                return jsonify({
+                    'success': False,
+                    'message': '활성 구독을 찾을 수 없습니다.'
+                }), 404
+            
+            # 현재 만료일 가져오기
+            if USE_POSTGRESQL:
+                current_expiry = subscription.get('expiry_date')
+            else:
+                current_expiry = subscription[0] if subscription else None
+            
+            if not current_expiry:
+                # 만료일이 없으면 오늘 날짜 기준으로 계산
+                new_expiry = datetime.datetime.now() + datetime.timedelta(days=days)
+            else:
+                # 현재 만료일 기준으로 계산
+                if isinstance(current_expiry, str):
+                    if 'T' in current_expiry:
+                        current_expiry = datetime.datetime.fromisoformat(current_expiry.replace('Z', '+00:00'))
+                    else:
+                        current_expiry = datetime.datetime.strptime(current_expiry[:10], '%Y-%m-%d')
+                new_expiry = current_expiry + datetime.timedelta(days=days)
+            
+            # 만료일 업데이트
+            if USE_POSTGRESQL:
+                cursor.execute("""
+                    UPDATE user_subscriptions 
+                    SET expiry_date = %s
+                    WHERE user_id = %s AND is_active = TRUE
+                """, (new_expiry, user_id))
+            else:
+                cursor.execute("""
+                    UPDATE user_subscriptions 
+                    SET expiry_date = ?
+                    WHERE user_id = ? AND is_active = 1
+                """, (new_expiry.isoformat(), user_id))
+            
+            conn.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': '만료일이 수정되었습니다.',
+                'new_expiry_date': new_expiry.isoformat()
+            })
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"만료일 조정 오류: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': f'만료일 조정 중 오류가 발생했습니다: {str(e)}'
+            }), 500
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"만료일 조정 오류: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': f'오류가 발생했습니다: {str(e)}'
+        }), 500
+
 if __name__ == '__main__':
     # 데이터베이스 초기화
     if not USE_POSTGRESQL:
