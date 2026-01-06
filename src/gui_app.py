@@ -605,26 +605,23 @@ class HanjinAutomationApp:
             controller.disconnect()
             
             if not token:
-                self.log("⚠️ 블루투스 기기에 사용자 정보가 등록되지 않았습니다.")
+                self.log("⚠️ 블루투스 기기에 사용자 정보가 등록되지 않았습니다. 모바일 앱에서 전송해주세요.")
                 warning_msg = (
                     "블루투스 기기에 사용자 정보가 등록되지 않았습니다.\n\n"
-                    "보안을 위해 모바일 앱에서 기기로 사용자 정보를 전송하는 것이 권장됩니다.\n\n"
+                    "작업을 시작하려면 모바일 앱에서 기기로 사용자 정보를 전송해야 합니다.\n\n"
                     "다음 순서로 진행해주세요:\n\n"
                     "1. 모바일 앱 실행\n"
                     "2. PC 프로그램과 같은 아이디로 로그인\n"
                     "3. 모바일 앱에서 블루투스 기기로 사용자 정보 전송\n"
                     "4. PC 프로그램에서 다시 시도\n\n"
-                    "지금은 사용자 정보 확인 없이 작업을 계속 진행하시겠습니까?"
+                    "※ 사용자 정보가 없으면 작업을 시작할 수 없습니다."
                 )
-                if not messagebox.askyesno("사용자 정보 없음", warning_msg):
-                    return False
-                # 사용자가 계속 진행을 선택한 경우
-                self.log("⚠️ 사용자 정보 확인을 건너뛰고 작업을 계속합니다.")
-                return True
+                messagebox.showwarning("사용자 정보 없음", warning_msg)
+                return False
             
             # 서버에 사용자 정보 확인 요청
             self.log("사용자 정보 확인 중...")
-            success, match, message = self.user_auth_manager.check_token_owner(token, self.current_user_id)
+            success, match, message, token_user_id = self.user_auth_manager.check_token_owner(token, self.current_user_id)
             
             if not success:
                 self.log(f"⚠️ 사용자 정보 확인 실패: {message}")
@@ -634,22 +631,24 @@ class HanjinAutomationApp:
             
             if not match:
                 self.log(f"❌ 사용자 정보가 일치하지 않습니다: {message}")
-                # 서버 메시지에서 실제 사용자 정보 추출 시도
-                other_user = message
-                if "사용자" in message and "(" in message:
-                    # 메시지에서 다른 사용자 정보 추출
+                # 토큰 소유자 ID가 있으면 사용, 없으면 메시지에서 추출 시도
+                mobile_user_id = token_user_id if token_user_id else "알 수 없음"
+                if not token_user_id and "(" in message and ")" in message:
+                    # 메시지에서 다른 사용자 정보 추출 (fallback)
                     try:
                         start_idx = message.find("(")
                         end_idx = message.find(")")
                         if start_idx != -1 and end_idx != -1:
-                            other_user = message[start_idx+1:end_idx]
+                            extracted_id = message[start_idx+1:end_idx].replace("토큰 소유자: ", "").strip()
+                            if extracted_id:
+                                mobile_user_id = extracted_id
                     except:
                         pass
                 
                 error_msg = (
                     f"⚠️ 사용자 정보가 일치하지 않습니다.\n\n"
-                    f"PC 프로그램: {self.current_user_id} (현재 로그인한 사용자)\n"
-                    f"블루투스 기기: {other_user} (다른 사용자)\n\n"
+                    f"PC 프로그램 로그인 아이디: {self.current_user_id}\n"
+                    f"모바일 앱 로그인 아이디: {mobile_user_id}\n\n"
                     f"같은 사용자로 로그인해야 작업을 진행할 수 있습니다.\n\n"
                     f"다음 순서로 진행해주세요:\n\n"
                     f"1. 모바일 앱 실행\n"
