@@ -1444,10 +1444,6 @@ class HanjinAutomationApp:
         info_frame.pack(fill=tk.BOTH, pady=(0, 15))
         info_frame.columnconfigure(0, weight=1)  # 가로 확장 가능
         
-        # 계좌정보 로드 중 표시
-        loading_label = ttk.Label(info_frame, text="계좌정보를 불러오는 중...", foreground="blue")
-        loading_label.pack(pady=20)
-        
         # 계좌정보 표시용 텍스트 위젯 (높이 확대, 너비는 프레임에 맞춤)
         info_text = tk.Text(info_frame, height=12, wrap=tk.WORD, state=tk.DISABLED, font=("맑은 고딕", 11))
         info_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -1473,44 +1469,55 @@ class HanjinAutomationApp:
         
         def load_account_info():
             """계좌정보 로드"""
-            loading_label.config(text="계좌정보를 불러오는 중...", foreground="blue")
+            # 로딩 메시지를 텍스트 위젯에 표시
+            info_text.config(state=tk.NORMAL)
+            info_text.delete("1.0", tk.END)
+            info_text.insert("1.0", "계좌정보를 불러오는 중...")
+            info_text.config(state=tk.DISABLED)
             account_window.update()
             
-            success, account_info, message = self.user_auth_manager.get_payment_account_info()
-            
-            if success and account_info:
-                # 계좌정보 표시
+            try:
+                success, account_info, message = self.user_auth_manager.get_payment_account_info()
+                
                 info_text.config(state=tk.NORMAL)
                 info_text.delete("1.0", tk.END)
                 
-                bank_name = account_info.get('bank_name', '')
-                account_number = account_info.get('account_number', '')
-                account_holder = account_info.get('account_holder', '')
-                memo = account_info.get('memo', '')
+                if success and account_info:
+                    # 계좌정보 표시
+                    bank_name = account_info.get('bank_name', '')
+                    account_number = account_info.get('account_number', '')
+                    account_holder = account_info.get('account_holder', '')
+                    memo = account_info.get('memo', '')
+                    
+                    info_content = ""
+                    if bank_name:
+                        info_content += f"은행명: {bank_name}\n"
+                    if account_number:
+                        info_content += f"계좌번호: {account_number}\n"
+                    if account_holder:
+                        info_content += f"예금주: {account_holder}\n"
+                    if memo:
+                        info_content += f"\n메모:\n{memo}\n"
+                    
+                    if not info_content:
+                        info_content = "등록된 계좌정보가 없습니다.\n관리자에게 문의하세요."
+                    
+                    info_text.insert("1.0", info_content)
+                else:
+                    # 오류 메시지 표시
+                    error_msg = f"계좌정보를 불러올 수 없습니다.\n\n오류: {message}\n\n관리자에게 문의하세요."
+                    info_text.insert("1.0", error_msg)
                 
-                info_content = ""
-                if bank_name:
-                    info_content += f"은행명: {bank_name}\n"
-                if account_number:
-                    info_content += f"계좌번호: {account_number}\n"
-                if account_holder:
-                    info_content += f"예금주: {account_holder}\n"
-                if memo:
-                    info_content += f"\n메모:\n{memo}\n"
-                
-                if not info_content:
-                    info_content = "등록된 계좌정보가 없습니다.\n관리자에게 문의하세요."
-                
-                info_text.insert("1.0", info_content)
                 info_text.config(state=tk.DISABLED)
-                
-                loading_label.config(text="", foreground="blue")
-            else:
+            except Exception as e:
+                # 예외 발생 시 오류 메시지 표시
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"계좌정보 로드 오류: {e}", exc_info=True)
                 info_text.config(state=tk.NORMAL)
                 info_text.delete("1.0", tk.END)
-                info_text.insert("1.0", f"계좌정보를 불러올 수 없습니다.\n{message}\n\n관리자에게 문의하세요.")
+                info_text.insert("1.0", f"계좌정보를 불러오는 중 오류가 발생했습니다.\n\n오류: {str(e)}\n\n관리자에게 문의하세요.")
                 info_text.config(state=tk.DISABLED)
-                loading_label.config(text="", foreground="blue")
         
         def request_confirmation():
             """입금 확인 요청"""
