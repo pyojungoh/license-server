@@ -1359,11 +1359,11 @@ class HanjinAutomationApp:
         account_window = tk.Toplevel(self.root)
         if is_expired:
             account_window.title("⚠️ 프로그램 기간 만료 - 입금계좌안내")
-            # 만료 모드일 때는 더 큰 창
-            window_width, window_height = 600, 650
+            # 만료 모드일 때는 더 큰 창 (가로 확대)
+            window_width, window_height = 800, 700
         else:
             account_window.title("내 입금계좌정보")
-            window_width, window_height = 550, 550
+            window_width, window_height = 700, 600
         
         account_window.geometry(f"{window_width}x{window_height}")
         account_window.resizable(True, True)  # 크기 조정 가능하도록 변경
@@ -1400,9 +1400,24 @@ class HanjinAutomationApp:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
+        # 캔버스 너비에 맞게 스크롤 가능한 프레임 크기 조정
+        def configure_scroll_region(event):
+            canvas_width = event.width
+            canvas.itemconfig(canvas.find_all()[0], width=canvas_width)
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        
+        canvas.bind('<Configure>', configure_scroll_region)
+        
+        # 스크롤 가능한 프레임이 캔버스 너비에 맞게 확장되도록
+        scrollable_frame.update_idletasks()
+        canvas_width = canvas.winfo_width()
+        if canvas_width > 1:
+            canvas.itemconfig(canvas.find_all()[0], width=canvas_width)
+        
         # 메인 프레임 (스크롤 가능한 프레임 안에)
         main_frame = ttk.Frame(scrollable_frame, padding="20")
         main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame.columnconfigure(0, weight=1)  # 가로 확장 가능
         
         # 제목
         if is_expired:
@@ -1427,28 +1442,30 @@ class HanjinAutomationApp:
         # 계좌정보 표시 영역
         info_frame = ttk.LabelFrame(main_frame, text="계좌정보", padding="15")
         info_frame.pack(fill=tk.BOTH, pady=(0, 15))
+        info_frame.columnconfigure(0, weight=1)  # 가로 확장 가능
         
         # 계좌정보 로드 중 표시
         loading_label = ttk.Label(info_frame, text="계좌정보를 불러오는 중...", foreground="blue")
         loading_label.pack(pady=20)
         
-        # 계좌정보 표시용 텍스트 위젯 (높이 조정)
-        info_text = tk.Text(info_frame, height=6, width=50, wrap=tk.WORD, state=tk.DISABLED, font=("맑은 고딕", 10))
-        info_text.pack(fill=tk.BOTH, expand=False)
+        # 계좌정보 표시용 텍스트 위젯 (높이 확대, 너비는 프레임에 맞춤)
+        info_text = tk.Text(info_frame, height=12, wrap=tk.WORD, state=tk.DISABLED, font=("맑은 고딕", 11))
+        info_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 입금자명 입력
         depositor_frame = ttk.Frame(main_frame)
         depositor_frame.pack(fill=tk.X, pady=(0, 15))
+        depositor_frame.columnconfigure(1, weight=1)  # 입력 필드가 확장되도록
         
-        ttk.Label(depositor_frame, text="입금자명:", font=("맑은 고딕", 10)).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Label(depositor_frame, text="입금자명:", font=("맑은 고딕", 11)).grid(row=0, column=0, padx=(0, 10), sticky=tk.W)
         depositor_var = tk.StringVar()
-        depositor_entry = ttk.Entry(depositor_frame, textvariable=depositor_var, width=30, font=("맑은 고딕", 10))
-        depositor_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        depositor_entry = ttk.Entry(depositor_frame, textvariable=depositor_var, font=("맑은 고딕", 11))
+        depositor_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), fill=tk.X)
         depositor_entry.focus()
         
         # 상태 메시지
-        status_label = ttk.Label(main_frame, text="", foreground="red", wraplength=450)
-        status_label.pack(pady=(0, 10))
+        status_label = ttk.Label(main_frame, text="", foreground="red", wraplength=700, font=("맑은 고딕", 10))
+        status_label.pack(fill=tk.X, pady=(0, 10))
         
         # 버튼 프레임 (하단에 고정)
         button_frame = ttk.Frame(main_frame)
