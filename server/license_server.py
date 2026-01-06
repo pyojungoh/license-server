@@ -4372,35 +4372,71 @@ def check_version():
                 cursor = conn.cursor()
                 conn.row_factory = sqlite3.Row
             
-            # 버전 정보 조회
-            if USE_POSTGRESQL:
-                cursor.execute("""
-                    SELECT current_version, min_required_version, force_update_enabled, 
-                           download_url, update_message
-                    FROM version_info
-                    ORDER BY updated_at DESC
-                    LIMIT 1
-                """)
-                result = cursor.fetchone()
-            else:
-                cursor.execute("""
-                    SELECT current_version, min_required_version, force_update_enabled, 
-                           download_url, update_message
-                    FROM version_info
-                    ORDER BY updated_at DESC
-                    LIMIT 1
-                """)
-                row = cursor.fetchone()
-                if row:
-                    result = {
-                        'current_version': row[0],
-                        'min_required_version': row[1],
-                        'force_update_enabled': bool(row[2]),
-                        'download_url': row[3],
-                        'update_message': row[4]
-                    }
+            # 버전 정보 조회 (테이블이 없을 수 있으므로 try-except로 처리)
+            result = None
+            try:
+                if USE_POSTGRESQL:
+                    cursor.execute("""
+                        SELECT current_version, min_required_version, force_update_enabled, 
+                               download_url, update_message
+                        FROM version_info
+                        ORDER BY updated_at DESC
+                        LIMIT 1
+                    """)
+                    result = cursor.fetchone()
                 else:
-                    result = None
+                    cursor.execute("""
+                        SELECT current_version, min_required_version, force_update_enabled, 
+                               download_url, update_message
+                        FROM version_info
+                        ORDER BY updated_at DESC
+                        LIMIT 1
+                    """)
+                    row = cursor.fetchone()
+                    if row:
+                        result = {
+                            'current_version': row[0],
+                            'min_required_version': row[1],
+                            'force_update_enabled': bool(row[2]),
+                            'download_url': row[3],
+                            'update_message': row[4]
+                        }
+            except Exception as table_error:
+                error_msg = str(table_error).lower()
+                # 테이블이 없으면 생성
+                if 'does not exist' in error_msg or 'no such table' in error_msg:
+                    logger.warning(f"version_info 테이블이 없습니다. 새로 생성합니다: {table_error}")
+                    # PostgreSQL에서는 트랜잭션 중단 후 롤백 필요
+                    if USE_POSTGRESQL:
+                        conn.rollback()
+                        cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS version_info (
+                                id SERIAL PRIMARY KEY,
+                                current_version VARCHAR(20) NOT NULL,
+                                min_required_version VARCHAR(20) NOT NULL,
+                                force_update_enabled BOOLEAN DEFAULT FALSE,
+                                download_url TEXT,
+                                update_message TEXT,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                updated_by VARCHAR(100)
+                            )
+                        """)
+                        conn.commit()
+                    else:
+                        cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS version_info (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                current_version TEXT NOT NULL,
+                                min_required_version TEXT NOT NULL,
+                                force_update_enabled INTEGER DEFAULT 0,
+                                download_url TEXT,
+                                update_message TEXT,
+                                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                                updated_by TEXT
+                            )
+                        """)
+                        conn.commit()
+                    result = None  # 테이블 생성 후에는 데이터가 없으므로 None
             
             if not result:
                 # 버전 정보가 없으면 기본값 반환 (강제 업데이트 비활성화)
@@ -4468,60 +4504,91 @@ def get_version_info():
                 cursor = conn.cursor()
                 conn.row_factory = sqlite3.Row
             
-            if USE_POSTGRESQL:
-                cursor.execute("""
-                    SELECT current_version, min_required_version, force_update_enabled, 
-                           download_url, update_message, updated_at
-                    FROM version_info
-                    ORDER BY updated_at DESC
-                    LIMIT 1
-                """)
-                result = cursor.fetchone()
-                if result:
-                    version_info = {
-                        'current_version': result.get('current_version', '1.0.0'),
-                        'min_required_version': result.get('min_required_version', '1.0.0'),
-                        'force_update_enabled': result.get('force_update_enabled', False),
-                        'download_url': result.get('download_url', ''),
-                        'update_message': result.get('update_message', ''),
-                        'updated_at': result.get('updated_at', '').isoformat() if result.get('updated_at') else ''
-                    }
+            # 버전 정보 조회 (테이블이 없을 수 있으므로 try-except로 처리)
+            version_info = None
+            try:
+                if USE_POSTGRESQL:
+                    cursor.execute("""
+                        SELECT current_version, min_required_version, force_update_enabled, 
+                               download_url, update_message, updated_at
+                        FROM version_info
+                        ORDER BY updated_at DESC
+                        LIMIT 1
+                    """)
+                    result = cursor.fetchone()
+                    if result:
+                        version_info = {
+                            'current_version': result.get('current_version', '1.0.0'),
+                            'min_required_version': result.get('min_required_version', '1.0.0'),
+                            'force_update_enabled': result.get('force_update_enabled', False),
+                            'download_url': result.get('download_url', ''),
+                            'update_message': result.get('update_message', ''),
+                            'updated_at': result.get('updated_at', '').isoformat() if result.get('updated_at') else ''
+                        }
                 else:
-                    version_info = {
-                        'current_version': '1.0.0',
-                        'min_required_version': '1.0.0',
-                        'force_update_enabled': False,
-                        'download_url': '',
-                        'update_message': '',
-                        'updated_at': ''
-                    }
-            else:
-                cursor.execute("""
-                    SELECT current_version, min_required_version, force_update_enabled, 
-                           download_url, update_message, updated_at
-                    FROM version_info
-                    ORDER BY updated_at DESC
-                    LIMIT 1
-                """)
-                row = cursor.fetchone()
-                if row:
-                    version_info = {
-                        'current_version': row[0] or '1.0.0',
-                        'min_required_version': row[1] or '1.0.0',
-                        'force_update_enabled': bool(row[2]),
-                        'download_url': row[3] or '',
-                        'update_message': row[4] or '',
-                        'updated_at': row[5] or ''
-                    }
-                else:
-                    version_info = {
-                        'current_version': '1.0.0',
-                        'min_required_version': '1.0.0',
-                        'force_update_enabled': False,
-                        'download_url': '',
-                        'update_message': '',
-                        'updated_at': ''
-                    }
+                    cursor.execute("""
+                        SELECT current_version, min_required_version, force_update_enabled, 
+                               download_url, update_message, updated_at
+                        FROM version_info
+                        ORDER BY updated_at DESC
+                        LIMIT 1
+                    """)
+                    row = cursor.fetchone()
+                    if row:
+                        version_info = {
+                            'current_version': row[0] or '1.0.0',
+                            'min_required_version': row[1] or '1.0.0',
+                            'force_update_enabled': bool(row[2]),
+                            'download_url': row[3] or '',
+                            'update_message': row[4] or '',
+                            'updated_at': row[5] or ''
+                        }
+            except Exception as table_error:
+                error_msg = str(table_error).lower()
+                # 테이블이 없으면 생성
+                if 'does not exist' in error_msg or 'no such table' in error_msg:
+                    logger.warning(f"version_info 테이블이 없습니다. 새로 생성합니다: {table_error}")
+                    # PostgreSQL에서는 트랜잭션 중단 후 롤백 필요
+                    if USE_POSTGRESQL:
+                        conn.rollback()
+                        cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS version_info (
+                                id SERIAL PRIMARY KEY,
+                                current_version VARCHAR(20) NOT NULL,
+                                min_required_version VARCHAR(20) NOT NULL,
+                                force_update_enabled BOOLEAN DEFAULT FALSE,
+                                download_url TEXT,
+                                update_message TEXT,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                updated_by VARCHAR(100)
+                            )
+                        """)
+                        conn.commit()
+                    else:
+                        cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS version_info (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                current_version TEXT NOT NULL,
+                                min_required_version TEXT NOT NULL,
+                                force_update_enabled INTEGER DEFAULT 0,
+                                download_url TEXT,
+                                update_message TEXT,
+                                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                                updated_by TEXT
+                            )
+                        """)
+                        conn.commit()
+            
+            # 버전 정보가 없으면 기본값 반환
+            if not version_info:
+                version_info = {
+                    'current_version': '1.0.0',
+                    'min_required_version': '1.0.0',
+                    'force_update_enabled': False,
+                    'download_url': '',
+                    'update_message': '',
+                    'updated_at': ''
+                }
             
             return jsonify({
                 'success': True,
@@ -4560,13 +4627,50 @@ def update_version_info():
             else:
                 cursor = conn.cursor()
             
-            # 기존 데이터 확인
-            if USE_POSTGRESQL:
-                cursor.execute("SELECT COUNT(*) FROM version_info")
-            else:
-                cursor.execute("SELECT COUNT(*) FROM version_info")
-            
-            count = cursor.fetchone()[0]
+            # 기존 데이터 확인 (테이블이 없을 수 있으므로 try-except로 처리)
+            count = 0
+            try:
+                if USE_POSTGRESQL:
+                    cursor.execute("SELECT COUNT(*) FROM version_info")
+                else:
+                    cursor.execute("SELECT COUNT(*) FROM version_info")
+                count = cursor.fetchone()[0] if USE_POSTGRESQL else cursor.fetchone()[0]
+            except Exception as table_error:
+                error_msg = str(table_error).lower()
+                # 테이블이 없으면 생성
+                if 'does not exist' in error_msg or 'no such table' in error_msg:
+                    logger.warning(f"version_info 테이블이 없습니다. 새로 생성합니다: {table_error}")
+                    # PostgreSQL에서는 트랜잭션 중단 후 롤백 필요
+                    if USE_POSTGRESQL:
+                        conn.rollback()
+                        cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS version_info (
+                                id SERIAL PRIMARY KEY,
+                                current_version VARCHAR(20) NOT NULL,
+                                min_required_version VARCHAR(20) NOT NULL,
+                                force_update_enabled BOOLEAN DEFAULT FALSE,
+                                download_url TEXT,
+                                update_message TEXT,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                updated_by VARCHAR(100)
+                            )
+                        """)
+                        conn.commit()
+                    else:
+                        cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS version_info (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                current_version TEXT NOT NULL,
+                                min_required_version TEXT NOT NULL,
+                                force_update_enabled INTEGER DEFAULT 0,
+                                download_url TEXT,
+                                update_message TEXT,
+                                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                                updated_by TEXT
+                            )
+                        """)
+                        conn.commit()
+                    count = 0  # 테이블 생성 후에는 데이터가 없으므로 0
             
             if count > 0:
                 # 업데이트
