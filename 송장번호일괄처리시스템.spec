@@ -1,7 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('config', 'config')]
+datas = [
+    ('config', 'config'),
+    ('version.txt', '.'),  # version.txt를 exe와 같은 폴더에 포함
+]
 binaries = []
 hiddenimports = ['openpyxl', 'pyserial', 'tkinter', 'tkinter.ttk', 'tkinter.messagebox', 'tkinter.filedialog']
 tmp_ret = collect_all('openpyxl')

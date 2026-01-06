@@ -3,6 +3,9 @@
 만든이: 표마왕 (pyo0829@gmail.com)
 """
 
+# 프로그램 버전 (exe 빌드 시 이 값을 업데이트)
+VERSION = "1.0.1"
+
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import serial.tools.list_ports
@@ -123,16 +126,32 @@ class HanjinAutomationApp:
             False: 강제 업데이트 필요로 프로그램 종료
         """
         try:
-            # version.txt 파일에서 현재 버전 읽기
-            version_file = Path(__file__).parent.parent / "version.txt"
-            if not version_file.exists():
-                # version.txt가 없으면 기본값 사용
-                current_version = "1.0.0"
+            # 버전 읽기 우선순위:
+            # 1. exe와 같은 폴더의 version.txt 파일
+            # 2. 소스 코드 폴더의 version.txt 파일
+            # 3. 코드에 정의된 VERSION 상수
+            current_version = VERSION  # 기본값은 코드의 VERSION
+            
+            # exe로 빌드된 경우를 대비해 여러 경로 확인
+            if hasattr(sys, '_MEIPASS'):
+                # PyInstaller로 빌드된 경우
+                # exe 파일과 같은 폴더의 version.txt 확인
+                exe_dir = Path(sys.executable).parent
+                version_file = exe_dir / "version.txt"
             else:
-                with open(version_file, 'r', encoding='utf-8') as f:
-                    current_version = f.read().strip()
-                    if not current_version:
-                        current_version = "1.0.0"
+                # 개발 모드: 소스 코드 폴더의 version.txt 확인
+                version_file = Path(__file__).parent.parent / "version.txt"
+            
+            # version.txt 파일이 있으면 읽기
+            if version_file.exists():
+                try:
+                    with open(version_file, 'r', encoding='utf-8') as f:
+                        file_version = f.read().strip()
+                        if file_version:
+                            current_version = file_version
+                except Exception:
+                    # 파일 읽기 실패 시 코드의 VERSION 사용
+                    pass
             
             # 서버에 버전 체크 요청
             success, needs_update, message, version_info = self.user_auth_manager.check_version(current_version)
