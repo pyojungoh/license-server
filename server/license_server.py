@@ -4327,18 +4327,15 @@ def adjust_user_expiry():
             
             subscription = cursor.fetchone()
             
-            if not subscription:
-                return jsonify({
-                    'success': False,
-                    'message': '활성 구독을 찾을 수 없습니다.'
-                }), 404
-            
             # 현재 만료일 가져오기
-            if USE_POSTGRESQL:
-                current_expiry = subscription.get('expiry_date')
-            else:
-                current_expiry = subscription[0] if subscription else None
+            current_expiry = None
+            if subscription:
+                if USE_POSTGRESQL:
+                    current_expiry = subscription.get('expiry_date')
+                else:
+                    current_expiry = subscription[0] if subscription else None
             
+            # 만료일 계산
             if not current_expiry:
                 # 만료일이 없으면 오늘 날짜 기준으로 계산
                 new_expiry = datetime.datetime.now() + datetime.timedelta(days=days)
@@ -4351,19 +4348,34 @@ def adjust_user_expiry():
                         current_expiry = datetime.datetime.strptime(current_expiry[:10], '%Y-%m-%d')
                 new_expiry = current_expiry + datetime.timedelta(days=days)
             
-            # 만료일 업데이트
-            if USE_POSTGRESQL:
-                cursor.execute("""
-                    UPDATE user_subscriptions 
-                    SET expiry_date = %s
-                    WHERE user_id = %s AND is_active = TRUE
-                """, (new_expiry, user_id))
+            # 만료일 업데이트 또는 생성
+            if subscription:
+                # 기존 구독이 있으면 업데이트
+                if USE_POSTGRESQL:
+                    cursor.execute("""
+                        UPDATE user_subscriptions 
+                        SET expiry_date = %s
+                        WHERE user_id = %s AND is_active = TRUE
+                    """, (new_expiry, user_id))
+                else:
+                    cursor.execute("""
+                        UPDATE user_subscriptions 
+                        SET expiry_date = ?
+                        WHERE user_id = ? AND is_active = 1
+                    """, (new_expiry.isoformat(), user_id))
             else:
-                cursor.execute("""
-                    UPDATE user_subscriptions 
-                    SET expiry_date = ?
-                    WHERE user_id = ? AND is_active = 1
-                """, (new_expiry.isoformat(), user_id))
+                # 구독이 없으면 새로 생성
+                if USE_POSTGRESQL:
+                    cursor.execute("""
+                        INSERT INTO user_subscriptions (user_id, subscription_type, start_date, expiry_date, is_active)
+                        VALUES (%s, 'manual', CURRENT_TIMESTAMP, %s, TRUE)
+                    """, (user_id, new_expiry))
+                else:
+                    now = datetime.datetime.now().isoformat()
+                    cursor.execute("""
+                        INSERT INTO user_subscriptions (user_id, subscription_type, start_date, expiry_date, is_active)
+                        VALUES (?, 'manual', ?, ?, 1)
+                    """, (user_id, now, new_expiry.isoformat()))
             
             conn.commit()
             
