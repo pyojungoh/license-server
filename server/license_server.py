@@ -4177,13 +4177,48 @@ def update_payment_account_info():
             cursor = conn.cursor()
         
         try:
-            # 기존 계좌정보 확인
-            if USE_POSTGRESQL:
-                cursor.execute("SELECT COUNT(*) FROM payment_account_info")
-            else:
-                cursor.execute("SELECT COUNT(*) FROM payment_account_info")
-            
-            count = cursor.fetchone()[0] if USE_POSTGRESQL else cursor.fetchone()[0]
+            # 기존 계좌정보 확인 (테이블이 없을 수 있으므로 try-except로 처리)
+            count = 0
+            try:
+                if USE_POSTGRESQL:
+                    cursor.execute("SELECT COUNT(*) FROM payment_account_info")
+                else:
+                    cursor.execute("SELECT COUNT(*) FROM payment_account_info")
+                count = cursor.fetchone()[0] if USE_POSTGRESQL else cursor.fetchone()[0]
+            except Exception as table_error:
+                error_msg = str(table_error).lower()
+                # 테이블이 없으면 생성
+                if 'does not exist' in error_msg or 'no such table' in error_msg:
+                    logger.warning(f"계좌정보 테이블이 없습니다. 새로 생성합니다: {table_error}")
+                    # 테이블 생성
+                    if USE_POSTGRESQL:
+                        cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS payment_account_info (
+                                id SERIAL PRIMARY KEY,
+                                bank_name VARCHAR(100),
+                                account_number VARCHAR(100),
+                                account_holder VARCHAR(100),
+                                memo TEXT,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                updated_by VARCHAR(100)
+                            )
+                        """)
+                    else:
+                        cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS payment_account_info (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                bank_name TEXT,
+                                account_number TEXT,
+                                account_holder TEXT,
+                                memo TEXT,
+                                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                                updated_by TEXT
+                            )
+                        """)
+                    conn.commit()
+                    count = 0
+                else:
+                    raise
             
             if count > 0:
                 # 기존 정보 업데이트
