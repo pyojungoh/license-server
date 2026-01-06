@@ -604,6 +604,11 @@ class HanjinAutomationApp:
             token = controller.get_token(log_callback=lambda msg: self.log(msg))
             controller.disconnect()
             
+            # 디버깅: 조회된 토큰의 일부만 로그에 출력 (보안)
+            if token:
+                token_preview = token[:20] + "..." if len(token) > 20 else token
+                self.log(f"조회된 토큰 (일부): {token_preview}")
+            
             if not token:
                 self.log("⚠️ 블루투스 기기에 사용자 정보가 등록되지 않았습니다. 모바일 앱에서 전송해주세요.")
                 warning_msg = (
@@ -623,6 +628,10 @@ class HanjinAutomationApp:
             self.log(f"서버에 토큰 확인 요청 중... (PC 로그인 아이디: {self.current_user_id})")
             success, match, message, token_user_id, is_expired, is_user_match = self.user_auth_manager.check_token_owner(token, self.current_user_id)
             self.log(f"서버 응답 - 성공: {success}, 일치: {match}, 토큰 소유자: {token_user_id}, 만료: {is_expired}, 아이디 일치: {is_user_match}")
+            
+            # 토큰 만료 시 추가 정보 로그
+            if is_expired:
+                self.log(f"⚠️ 토큰이 만료되었습니다. 모바일 앱에서 새 토큰을 생성하여 재전송해야 합니다.")
             
             if not success:
                 self.log(f"⚠️ 사용자 정보 확인 실패: {message}")

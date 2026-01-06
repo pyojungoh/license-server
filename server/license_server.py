@@ -2123,6 +2123,11 @@ def check_token_owner():
         # PC 프로그램 로그인 사용자와 토큰 소유자 일치 확인 (먼저 확인)
         is_user_match = (token_user_id == pc_user_id)
         
+        # 토큰 만료 정보 로깅
+        if expires_at < now:
+            time_diff = (now - expires_at).total_seconds() / 3600  # 시간 단위
+            logger.warning(f"토큰 만료됨 - 사용자: {token_user_id}, 만료 시간: {expires_at}, 현재 시간: {now}, 경과 시간: {time_diff:.2f}시간")
+        
         if expires_at < now:
             # 토큰이 만료되었지만 아이디가 일치하는 경우
             if is_user_match:
