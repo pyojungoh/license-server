@@ -1359,10 +1359,15 @@ class HanjinAutomationApp:
         account_window = tk.Toplevel(self.root)
         if is_expired:
             account_window.title("⚠️ 프로그램 기간 만료 - 입금계좌안내")
+            # 만료 모드일 때는 더 큰 창
+            window_width, window_height = 600, 650
         else:
             account_window.title("내 입금계좌정보")
-        account_window.geometry("500x500")
-        account_window.resizable(False, False)
+            window_width, window_height = 550, 550
+        
+        account_window.geometry(f"{window_width}x{window_height}")
+        account_window.resizable(True, True)  # 크기 조정 가능하도록 변경
+        account_window.minsize(window_width, window_height)  # 최소 크기 설정
         account_window.transient(self.root)
         account_window.grab_set()
         
@@ -1375,12 +1380,28 @@ class HanjinAutomationApp:
         
         # 창을 화면 중앙에 배치
         account_window.update_idletasks()
-        x = (account_window.winfo_screenwidth() // 2) - (500 // 2)
-        y = (account_window.winfo_screenheight() // 2) - (500 // 2)
-        account_window.geometry(f"500x500+{x}+{y}")
+        x = (account_window.winfo_screenwidth() // 2) - (window_width // 2)
+        y = (account_window.winfo_screenheight() // 2) - (window_height // 2)
+        account_window.geometry(f"{window_width}x{window_height}+{x}+{y}")
         
-        # 메인 프레임
-        main_frame = ttk.Frame(account_window, padding="20")
+        # 스크롤 가능한 캔버스 생성
+        canvas = tk.Canvas(account_window)
+        scrollbar = ttk.Scrollbar(account_window, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # 메인 프레임 (스크롤 가능한 프레임 안에)
+        main_frame = ttk.Frame(scrollable_frame, padding="20")
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # 제목
@@ -1405,15 +1426,15 @@ class HanjinAutomationApp:
         
         # 계좌정보 표시 영역
         info_frame = ttk.LabelFrame(main_frame, text="계좌정보", padding="15")
-        info_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        info_frame.pack(fill=tk.BOTH, pady=(0, 15))
         
         # 계좌정보 로드 중 표시
         loading_label = ttk.Label(info_frame, text="계좌정보를 불러오는 중...", foreground="blue")
         loading_label.pack(pady=20)
         
-        # 계좌정보 표시용 텍스트 위젯
-        info_text = tk.Text(info_frame, height=8, width=50, wrap=tk.WORD, state=tk.DISABLED, font=("맑은 고딕", 10))
-        info_text.pack(fill=tk.BOTH, expand=True)
+        # 계좌정보 표시용 텍스트 위젯 (높이 조정)
+        info_text = tk.Text(info_frame, height=6, width=50, wrap=tk.WORD, state=tk.DISABLED, font=("맑은 고딕", 10))
+        info_text.pack(fill=tk.BOTH, expand=False)
         
         # 입금자명 입력
         depositor_frame = ttk.Frame(main_frame)
@@ -1429,9 +1450,9 @@ class HanjinAutomationApp:
         status_label = ttk.Label(main_frame, text="", foreground="red", wraplength=450)
         status_label.pack(pady=(0, 10))
         
-        # 버튼 프레임
+        # 버튼 프레임 (하단에 고정)
         button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
         
         def load_account_info():
             """계좌정보 로드"""
@@ -1509,6 +1530,12 @@ class HanjinAutomationApp:
         if not is_expired:
             cancel_btn = ttk.Button(button_frame, text="취소", command=account_window.destroy, width=20)
             cancel_btn.pack(side=tk.LEFT, padx=5)
+        
+        # 마우스 휠 스크롤 지원
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
         
         # Enter 키로 요청
         def on_enter(event):
