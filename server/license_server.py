@@ -4190,8 +4190,10 @@ def update_payment_account_info():
                 # 테이블이 없으면 생성
                 if 'does not exist' in error_msg or 'no such table' in error_msg:
                     logger.warning(f"계좌정보 테이블이 없습니다. 새로 생성합니다: {table_error}")
-                    # 테이블 생성
+                    # PostgreSQL에서는 트랜잭션 중단 후 롤백 필요
                     if USE_POSTGRESQL:
+                        conn.rollback()
+                        # 테이블 생성 (자동 커밋)
                         cursor.execute("""
                             CREATE TABLE IF NOT EXISTS payment_account_info (
                                 id SERIAL PRIMARY KEY,
@@ -4203,7 +4205,9 @@ def update_payment_account_info():
                                 updated_by VARCHAR(100)
                             )
                         """)
+                        conn.commit()
                     else:
+                        # SQLite는 자동 커밋
                         cursor.execute("""
                             CREATE TABLE IF NOT EXISTS payment_account_info (
                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4215,7 +4219,7 @@ def update_payment_account_info():
                                 updated_by TEXT
                             )
                         """)
-                    conn.commit()
+                        conn.commit()
                     count = 0
                 else:
                     raise
