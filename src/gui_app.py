@@ -1397,8 +1397,12 @@ class HanjinAutomationApp:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        # 캔버스와 스크롤바를 담을 프레임
+        canvas_frame = ttk.Frame(account_window)
+        canvas_frame.pack(side="top", fill="both", expand=True)
+        
+        canvas.pack(side="left", fill="both", expand=True, in_=canvas_frame)
+        scrollbar.pack(side="right", fill="y", in_=canvas_frame)
         
         # 캔버스 너비에 맞게 스크롤 가능한 프레임 크기 조정
         def configure_scroll_region(event):
@@ -1418,6 +1422,10 @@ class HanjinAutomationApp:
         main_frame = ttk.Frame(scrollable_frame, padding="20")
         main_frame.pack(fill=tk.BOTH, expand=True)
         main_frame.columnconfigure(0, weight=1)  # 가로 확장 가능
+        
+        # 버튼 프레임 (스크롤 영역 밖에 고정)
+        button_frame = ttk.Frame(account_window, padding="10")
+        button_frame.pack(side="bottom", fill=tk.X)
         
         # 제목
         if is_expired:
@@ -1463,12 +1471,8 @@ class HanjinAutomationApp:
         status_label = ttk.Label(main_frame, text="", foreground="red", wraplength=700, font=("맑은 고딕", 10))
         status_label.pack(fill=tk.X, pady=(0, 10))
         
-        # 버튼 프레임 (하단에 고정)
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X, pady=(10, 0))
-        
         def load_account_info():
-            """계좌정보 로드"""
+            """계좌정보 로드 (비동기)"""
             # 로딩 메시지를 텍스트 위젯에 표시
             info_text.config(state=tk.NORMAL)
             info_text.delete("1.0", tk.END)
@@ -1476,9 +1480,22 @@ class HanjinAutomationApp:
             info_text.config(state=tk.DISABLED)
             account_window.update()
             
-            try:
-                success, account_info, message = self.user_auth_manager.get_payment_account_info()
-                
+            def load_in_background():
+                """백그라운드에서 계좌정보 로드"""
+                try:
+                    success, account_info, message = self.user_auth_manager.get_payment_account_info()
+                    
+                    # UI 업데이트는 메인 스레드에서
+                    account_window.after(0, lambda: update_info_text(success, account_info, message))
+                except Exception as e:
+                    # 예외 발생 시 오류 메시지 표시
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"계좌정보 로드 오류: {e}", exc_info=True)
+                    account_window.after(0, lambda: update_info_text(False, None, f"오류: {str(e)}"))
+            
+            def update_info_text(success, account_info, message):
+                """계좌정보 텍스트 업데이트"""
                 info_text.config(state=tk.NORMAL)
                 info_text.delete("1.0", tk.END)
                 
@@ -1509,15 +1526,11 @@ class HanjinAutomationApp:
                     info_text.insert("1.0", error_msg)
                 
                 info_text.config(state=tk.DISABLED)
-            except Exception as e:
-                # 예외 발생 시 오류 메시지 표시
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"계좌정보 로드 오류: {e}", exc_info=True)
-                info_text.config(state=tk.NORMAL)
-                info_text.delete("1.0", tk.END)
-                info_text.insert("1.0", f"계좌정보를 불러오는 중 오류가 발생했습니다.\n\n오류: {str(e)}\n\n관리자에게 문의하세요.")
-                info_text.config(state=tk.DISABLED)
+            
+            # 백그라운드 스레드에서 로드
+            import threading
+            thread = threading.Thread(target=load_in_background, daemon=True)
+            thread.start()
         
         def request_confirmation():
             """입금 확인 요청"""
