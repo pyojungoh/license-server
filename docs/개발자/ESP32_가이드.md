@@ -297,3 +297,4 @@ ESP32 BLE HID 키보드 시작
 - 작업규칙.md: ESP32 수정 불가 제약사항 상세 설명
 - 펌웨어 소스코드: `firmware/esp32_ble_hid/esp32_ble_hid.ino`
 
+
