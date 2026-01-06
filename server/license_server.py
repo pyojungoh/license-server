@@ -4041,6 +4041,20 @@ def get_payment_account_info():
                 'account_info': account_info
             })
         except Exception as e:
+            error_msg = str(e).lower()
+            # 테이블이 없을 때는 빈 정보 반환
+            if 'does not exist' in error_msg or 'no such table' in error_msg:
+                logger.warning(f"계좌정보 테이블이 없습니다. 빈 정보를 반환합니다: {e}")
+                return jsonify({
+                    'success': True,
+                    'account_info': {
+                        'bank_name': '',
+                        'account_number': '',
+                        'account_holder': '',
+                        'memo': '',
+                        'updated_at': ''
+                    }
+                })
             logger.error(f"계좌정보 조회 오류: {e}", exc_info=True)
             return jsonify({
                 'success': False,
